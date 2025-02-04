@@ -12,10 +12,8 @@ DeepGeSeq (NvwaToolKit), is a systemmatic and easy-using deep learning software 
 
 It's quite easy to train a deep learning model using a pre-defined model architecture in DeepGeSeq. I've re-implemented several published models in DeepGeSeq. At the same time, DeepGeSeq also support to automatically (or manually) search the best hyper-parameters of model architecture. Moreover, custumed and complicated model could be build with low-level modules in DeepGeSeq (DeepGeSeq.Trainer and Explainer always help me a lot). Importantly, DeepGeSeq is also easy to be extended with advanced deep learning modules based on pytorch. 
 
-ps. Nvwa, the name of a mother god in ancient Chinese legend, is a deep learning–based strategy to predict expression landscapes and decipher regulatory elements (Filters) at the single-cell level. See our previous work in https://github.com/JiaqiLiZju/Nvwa.
-
 ## Installation
-We recommend using DeepGeSeq  with Python 3.7 or above. 
+We recommend using DeepGeSeq with Python 3.7 or above. 
 
 ### Installing DeepGeSeq from source:
 
