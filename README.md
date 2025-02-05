@@ -97,87 +97,87 @@ dgs {train, evaluate, explain, predict} --config config.json
 ## Configuration Examples
 
 ### Complete Configuration
-```json
-{
-    "modes": ["train", "evaluate", "predict"], // define the mode of the run, must be one of the example modes
-    "device": "cuda", // define the device to run the model
-    "output_dir": "Test", // define the output directory
+```python
+complete_configs = {
+    "modes": ["train", "evaluate", "predict"],  define the mode of the run, must be one of the example modes
+    "device": "cuda", # define the device to run the model
+    "output_dir": "Test", # define the output directory
     
-    "data": { // define the data for the run
-        "genome_path": "Test/reference_grch38p13/GRCh38.p13.genome.fa.gz", // define the genome file
-        "intervals_path": "Test/random_regions.bed", // define the intervals file, each line is a region, and it defines the data samples
-        "target_tasks": [ // define the target tasks for the run 
+    "data": { # define the data for the run
+        "genome_path": "Test/reference_grch38p13/GRCh38.p13.genome.fa.gz", # define the genome file
+        "intervals_path": "Test/random_regions.bed", # define the intervals file, each line is a region, and it defines the data samples
+        "target_tasks": [ # define the target tasks for the run 
             {
-                "task_name": "gc_content", // define the task name
-                "file_path": "Test/hg38.gc5Base.bw", // define the file path
-                "file_type": "bigwig" // define the file type, currently support "bigwig" and "bed"
-            }, // define the second task, etc.
+                "task_name": "gc_content", # define the task name
+                "file_path": "Test/hg38.gc5Base.bw", # define the file path
+                "file_type": "bigwig" # define the file type, currently support "bigwig" and "bed"
+            }, # define the second task, etc.
             {
-                "task_name": "recomb", // define the task name
-                "file_path": "Test/recombAvg.bw", // define the file path
-                "file_type": "bigwig" // define the file type, currently support "bigwig" and "bed"
+                "task_name": "recomb", # define the task name
+                "file_path": "Test/recombAvg.bw", # define the file path
+                "file_type": "bigwig" # define the file type, currently support "bigwig" and "bed"
             }
         ],
-        "train_test_split": "random_split", // define the train-test split method, currently support "random_split" and "chromosome_split"
-        "test_size": 0.2, // define the test size for the run, and it will be used in "random_split" mode
-        "val_size": 0.2, // define the validation size for the run, and it will be used in "random_split" mode
-        "test_chroms": ["chr8"], // define the test chromosomes for the run, it should be a list of chromosomes, for example, ["chr8", "chr9", "chr10"], and it will be used in "chromosome_split" mode
-        "val_chroms": ["chr7"], // define the validation chromosomes for the run, it should be a list of chromosomes, for example, ["chr7", "chr8", "chr9"], and it will be used in "chromosome_split" mode
-        "strand_aware": True, // define whether the data is strand-aware
-        "batch_size": 4 // define the batch size for the run
+        "train_test_split": "random_split", # define the train-test split method, currently support "random_split" and "chromosome_split"
+        "test_size": 0.2, # define the test size for the run, and it will be used in "random_split" mode
+        "val_size": 0.2, # define the validation size for the run, and it will be used in "random_split" mode
+        "test_chroms": ["chr8"], # define the test chromosomes for the run, it should be a list of chromosomes, for example, ["chr8", "chr9", "chr10"], and it will be used in "chromosome_split" mode
+        "val_chroms": ["chr7"], # define the validation chromosomes for the run, it should be a list of chromosomes, for example, ["chr7", "chr8", "chr9"], and it will be used in "chromosome_split" mode
+        "strand_aware": True, # define whether the data is strand-aware
+        "batch_size": 4 # define the batch size for the run
     },
     
-    "model": { // define the model
-        "type": "CNN", // define the model type
-        "args": {"output_size": 2} // define the model arguments, which should be adjusted according to the task, for example, "output_size" should be equal to the number of tasks
+    "model": { # define the model
+        "type": "CNN", # define the model type
+        "args": {"output_size": 2} # define the model arguments, which should be adjusted according to the task, for example, "output_size" should be equal to the number of tasks
     },
     
-    "train": { // define the training settings
-        "optimizer": { // define the optimizer
-            "type": "Adam", // define the optimizer type
-            "params": {"lr": 1e-3} // define the optimizer parameters, for example, "lr" is the learning rate
+    "train": { # define the training settings
+        "optimizer": { # define the optimizer
+            "type": "Adam", # define the optimizer type
+            "params": {"lr": 1e-3} # define the optimizer parameters, for example, "lr" is the learning rate
         },
-        "criterion": { // define the loss function
-            "type": "MSELoss", // define the loss function type, which should be adjusted according to the task, for example, "BCELoss" for binary classification (0/1), "MSELoss" for regression (continuous values)
-            "params": {} // define the loss function parameters, for example, "weight" is the weight for the loss function
+        "criterion": { # define the loss function
+            "type": "MSELoss", # define the loss function type, which should be adjusted according to the task, for example, "BCELoss" for binary classification (0/1), "MSELoss" for regression (continuous values)
+            "params": {} # define the loss function parameters, for example, "weight" is the weight for the loss function
         },
-        "patience": 10, // define the patience for early stopping
-        "max_epochs": 500, // define the maximum epochs for the run
-        "checkpoint_dir": "checkpoints", // define the checkpoint directory
-        "use_tensorboard": False, // define whether to use tensorboard
-        "tensorboard_dir": "tensorboard" // define the tensorboard directory
+        "patience": 10, # define the patience for early stopping
+        "max_epochs": 500, # define the maximum epochs for the run
+        "checkpoint_dir": "checkpoints", # define the checkpoint directory
+        "use_tensorboard": False, # define whether to use tensorboard
+        "tensorboard_dir": "tensorboard" # define the tensorboard directory
     },
     
-    "explain": { // define the explanation settings
-        "target": 0, // define the target task for explanation, which should be adjusted according to the task, for example, "target":0 for the first task
-        "output_dir": "motif_results", // define the output directory for the explanation
-        "max_seqlets": 2000 // define the maximum number of seqlets for the explanation
+    "explain": { # define the explanation settings
+        "target": 0, # define the target task for explanation, which should be adjusted according to the task, for example, "target":0 for the first task
+        "output_dir": "motif_results", # define the output directory for the explanation
+        "max_seqlets": 2000 # define the maximum number of seqlets for the explanation
     },
     
-    "predict": { // define the prediction settings 
-        "vcf_path": "Test/test.vcf", // define the vcf file path for prediction
-        "sequence_length": 1000, // define the sequence length for prediction, which means the length of the sequence to be predicted, it usually should be the same as the sequence length used in model
-        "metric_func": "diff", // define the metric function for prediction, currently support "diff" and "mean"
-        "mean_by_tasks": True // define whether to mean the prediction by tasks, which means to mean the prediction by tasks, for example, "mean_by_tasks":True for the first task
+    "predict": { # define the prediction settings 
+        "vcf_path": "Test/test.vcf", # define the vcf file path for prediction
+        "sequence_length": 1000, # define the sequence length for prediction, which means the length of the sequence to be predicted, it usually should be the same as the sequence length used in model
+        "metric_func": "diff", # define the metric function for prediction, currently support "diff" and "mean"
+        "mean_by_tasks": True # define whether to mean the prediction by tasks, which means to mean the prediction by tasks, for example, "mean_by_tasks":True for the first task
     }
 }
 ```
 
 ### Minimal Configuration
-```json
-{
-    "modes" : ["train", "evaluate", "explain", "predict"], // define the mode of the run, must be one of the example modes
-    "device": "cuda", // define the device to run the model
-    "output_dir": "Test", // define the output directory
-    "data": { // define the data for the run
-        "genome_path": "Test/reference_grch38p13/GRCh38.p13.genome.fa.gz", // define the genome file
-        "intervals_path": "Test/random_regions.bed", // define the intervals file, each line is a region, and it defines the data samples
-        "target_tasks": [ // define the target tasks for the run
+```python
+minimal_configs = {
+    "modes" : ["train", "evaluate", "explain", "predict"], # define the mode of the run, must be one of the example modes
+    "device": "cuda", # define the device to run the model
+    "output_dir": "Test", # define the output directory
+    "data": { # define the data for the run
+        "genome_path": "Test/reference_grch38p13/GRCh38.p13.genome.fa.gz", # define the genome file
+        "intervals_path": "Test/random_regions.bed", # define the intervals file, each line is a region, and it defines the data samples
+        "target_tasks": [ # define the target tasks for the run
             {
-                "task_name": "gc_content", // define the task name
-                "file_path": "Test/hg38.gc5Base.bw", // define the file path
-                "file_type": "bigwig", // define the file type, currently support "bigwig" and "bed"
-            }, // define the second task, etc.
+                "task_name": "gc_content", # define the task name
+                "file_path": "Test/hg38.gc5Base.bw", # define the file path
+                "file_type": "bigwig", # define the file type, currently support "bigwig" and "bed"
+            }, # define the second task, etc.
             {
                 "task_name": "recomb",
                 "file_path": "Test/recombAvg.bw",
@@ -185,24 +185,24 @@ dgs {train, evaluate, explain, predict} --config config.json
             }
         ]
     },
-    "train": { // define the training settings
-        "optimizer": { // define the optimizer
-            "type": "Adam", // define the optimizer type
-            "lr": 0.001 // define the learning rate
+    "train": { # define the training settings
+        "optimizer": { # define the optimizer
+            "type": "Adam", # define the optimizer type
+            "lr": 0.001 # define the learning rate
         },
-        "criterion": { // define the loss function
-            "type": "MSELoss" // define the loss function type, which should be adjusted according to the task, for example, "BCELoss" for binary classification (0/1), "MSELoss" for regression (continuous values)
+        "criterion": { # define the loss function
+            "type": "MSELoss" # define the loss function type, which should be adjusted according to the task, for example, "BCELoss" for binary classification (0/1), "MSELoss" for regression (continuous values)
         }
     },
-    "model": { // define the model
-        "type": "CNN", // define the model type
+    "model": { # define the model
+        "type": "CNN", # define the model type
         "args":{
-          "output_size": 2, // define the model arguments, which should be adjusted according to the task, for example, "output_size" should be equal to the number of tasks
+          "output_size": 2, # define the model arguments, which should be adjusted according to the task, for example, "output_size" should be equal to the number of tasks
           } 
     },
-    "explain":{"target":0}, // define the target task for explanation, which should be adjusted according to the task, for example, "target":0 for the first task
-    "predict":{"vcf_path":"Test/test.vcf", // define the vcf file path for prediction
-              "sequence_length":1000 // define the sequence length for prediction, which means the length of the sequence to be predicted, it usually should be the same as the sequence length used in model
+    "explain":{"target":0}, # define the target task for explanation, which should be adjusted according to the task, for example, "target":0 for the first task
+    "predict":{"vcf_path":"Test/test.vcf", # define the vcf file path for prediction
+              "sequence_length":1000 # define the sequence length for prediction, which means the length of the sequence to be predicted, it usually should be the same as the sequence length used in model
               }
 }
 ```
