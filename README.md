@@ -2,99 +2,296 @@
 
 <div align=left><img src="./Figures/Logo.png" width="80px"></img></div>
 
-Source code used for ```Systematic evaluation of deep learning for single-cell genomics data using DeepGeSeq```.
-
-## About DeepGeSeq
-
-DeepGeSeq (NvwaToolKit), is a systemmatic and easy-using deep learning software in genomics. DeepGeSeq support modern deep learning achitectures in genomics, such as Residual Module, ResNet, Attention Module, CBAM, Transformer and so on. 
+DeepGeSeq is a systematic and easy-to-use deep learning toolkit for genomics data analysis. It provides comprehensive support for modern deep learning architectures and analysis pipelines in genomics research.
 
 <div align=center><img src="./Figures/DeepGeSeq.png" width="450px"></img></div>
 
-It's quite easy to train a deep learning model using a pre-defined model architecture in DeepGeSeq. I've re-implemented several published models in DeepGeSeq. At the same time, DeepGeSeq also support to automatically (or manually) search the best hyper-parameters of model architecture. Moreover, custumed and complicated model could be build with low-level modules in DeepGeSeq (DeepGeSeq.Trainer and Explainer always help me a lot). Importantly, DeepGeSeq is also easy to be extended with advanced deep learning modules based on pytorch. 
+## Key Features
+
+### 1. Model Architectures
+- **Modern Deep Learning Support**:
+  - Residual Networks (ResNet)
+  - Attention Mechanisms (CBAM)
+  - Transformers
+  - Customizable architectures
+- **Pre-implemented Models**:
+  - Re-implementation of published models
+  - Easy model customization
+  - Automatic architecture search
+
+### 2. Training & Evaluation
+- **Flexible Training Pipeline**:
+  - GPU acceleration support
+  - Early stopping
+  - Checkpoint management
+  - TensorBoard integration
+- **Comprehensive Evaluation**:
+  - Multiple metrics (AUC, PR, F1, etc.)
+  - Cross-validation support
+  - Performance visualization
+
+### 3. Model Applications
+- **Motif Analysis**:
+  - Motif enrichment analysis
+  - Integration with MEME Suite
+  - HOMER motif search support
+- **Feature Attribution**:
+  - Gradient-based attribution
+  - Integrated gradients
+  - DeepLIFT support
+- **Variant Effect Prediction**:
+  - VCF file support
+  - Variant impact scoring
+  - Batch prediction
+
+### 4. Data Processing
+- **Multiple Format Support**:
+  - FASTA/FASTQ sequences
+  - BED intervals
+  - BigWig signals
+  - VCF variants
+- **Efficient Processing**:
+  - Parallel data loading
+  - Memory-efficient processing
+  - Strand-aware analysis
 
 ## Installation
-We recommend using DeepGeSeq with Python 3.7 or above. 
-
-### Installing DeepGeSeq from source:
-
-First, download the latest commits from the source repository (or download the latest version of DeepGeSeq for a stable release):
-```
-git clone https://github.com/JiaqiLiZju/DeepGeSeq.git
-```
-
-The `setup.py` script requires following requirements. Please make sure you have these already installed.
 
 ### Requirements
+- Python ≥ 3.7
+- PyTorch ≥ 1.10.1
+- CUDA support (optional, for GPU acceleration)
 
-- Python packages
-```
-python>=3.7
+### Dependencies
+```bash
+# Core dependencies
 numpy
 pandas>=0.21
 matplotlib==3.0.*
-# h5py > 2.10 may returns b'strings' reading h5file
-h5py=2.10.0
+h5py==2.10.0  # Note: h5py > 2.10 may return b'strings' when reading h5file
 tqdm
 scikit-learn>=0.21.2
-# torch >=1.10.1 support tensorboard, and ModifyOutputHook
-torch>=1.10.1
-tensorboard=2.7.0
-captum=0.5.0
+torch>=1.10.1  # Required for tensorboard and ModifyOutputHook
+tensorboard==2.7.0
+captum==0.5.0
 networkx
-# higher version of scipy do not support resize
-pillows
+pillow
+
+# Optional external tools
+meme==5.4.1  # For motif database comparison
+homer2      # For motif search in activated seqlets
 ```
 
-- external softwares (optional)
-```
-# meme could align the deep learning motif with known TFBS database
-meme-5.4.1
-# homer2 could search the motif in activated seqlets
-homer2
-```
-<!-- biopython-1.79 -->
+### Installation Methods
 
-### Installation
+1. **From Source**:
+```bash
+# Clone repository
+git clone https://github.com/JiaqiLiZju/DeepGeSeq.git
 
-If you would like to locally install DeepGeSeq, you can run
-```sh
+# Install
+cd DeepGeSeq
 python setup.py install
 ```
 
-### Load packages
-If you would like to load DeepGeSeq in your python scripts instead of installing locally, you can run
-
-```
-import sys
-sys.path.append("PATH/TO/DeepGeSeq/")
-
-import DeepGeSeq
+2. **Development Installation**:
+```bash
+# For development and testing
+python setup.py develop
 ```
 
-## Tutorials
+## Quick Start
 
-### Documents
-The documentation for DeepGeSeq is available [here]().
+### 1. Generate Configuration
+```bash
+# Generate minimal example config
+nvtk config --example minimal --output config.json
 
-### Manuscript case studies
+# Generate full example config
+nvtk config --example full --output config.json
+```
 
-The code to reproduce case studies in the manuscript is available [here]().
+### 2. Basic Training
+```bash
+# Train with default settings
+nvtk train --config train_config.json
 
-Each case has its own directory and README describing how to run these cases. 
-We recommend consulting the step-by-step breakdown of each case study that we provide in the methods section of [the manuscript](https://doi.org/10.1101/438291) as well.  
+# Train with specific GPU
+nvtk train --config train_config.json --gpu 0 --seed 42
+```
 
-<!--
-- Case study 1 finishes in about 1.5 days on a GPU node.
-- Case study 2 takes 6-7 days to run training (distributed the work across 4 v100s) and evaluation.
-- Case study 3 (variant effect prediction) takes about 1 day to run. 
+### 3. Model Evaluation
+```bash
+# Basic evaluation
+nvtk evaluate --config eval_config.json
 
-The case studies in the manuscript focus on developing deep learning models for classification tasks. Selene does support training and evaluating sequence-based regression models, and we have provided a [tutorial to demonstrate this](https://github.com/FunctionLab/selene/blob/master/tutorials/regression_mpra_example/regression_mpra_example.ipynb).  
+# Evaluation with specific metrics
+nvtk evaluate --config eval_config.json --metrics auc,pr,f1
+```
 
--->
+### 4. Model Interpretation
+```bash
+# Generate motif explanations
+nvtk explain --config explain_config.json
 
-The manuscript examples were only tested on GPU (Our GPU, NVIDIA Tesla A100, A40).
+# Predict variant effects
+nvtk predict --config predict_config.json
+```
 
-**Important**: The tutorials and manuscript examples were originally run on DeepGeSeq version 0.1.0 (PyTorch version 0.4.1). Please note that models created with an older version of PyTorch (such as those downloadable with the manuscript case studies) are NOT compatible with newer versions of PyTorch. If you run into errors loading trained model weights files, it is likely the result of differences in PyTorch or CUDA toolkit versions.  
+## Configuration Examples
+
+### Minimal Configuration
+```json
+{
+  "data": {
+    "genome_path": "data/genome.fa",
+    "intervals_path": "data/intervals.bed",
+    "target_tasks": [
+      {
+        "task_name": "binding",
+        "file_path": "data/chip.bw",
+        "file_type": "bigwig"
+      }
+    ]
+  },
+  "model": {
+    "type": "CNN",
+    "args": {"output_size": 1}
+  }
+}
+```
+
+### Advanced Configuration
+```json
+{
+  "data": {
+    "genome_path": "data/genome.fa",
+    "intervals_path": "data/intervals.bed",
+    "target_tasks": [
+      {
+        "task_name": "binding",
+        "file_path": "data/chip.bw",
+        "file_type": "bigwig"
+      }
+    ],
+    "batch_size": 64,
+    "strand_aware": true,
+    "sequence_length": 1000
+  },
+  "model": {
+    "type": "ResNet",
+    "args": {
+      "num_layers": 34,
+      "hidden_size": 256,
+      "dropout": 0.1
+    }
+  },
+  "train": {
+    "optimizer": {
+      "type": "Adam",
+      "params": {
+        "lr": 0.001,
+        "weight_decay": 1e-6
+      }
+    },
+    "max_epochs": 100,
+    "patience": 10,
+    "use_tensorboard": true
+  }
+}
+```
+
+## Advanced Usage
+
+### Define your data
+```python
+from DeepGeSeq.Dataset import SeqDataset
+from DeepGeSeq.Data import create_dataloader
+class MyData(SeqDataset):
+    def __init__(self,
+        intervals: Interval,
+        genome: Genome,
+        targets: Target,
+        strand_aware: bool = True
+    ):
+        super().__init__(intervals, genome, strand_aware)
+        # add your own labels here
+        self.labels = labels
+
+    def __getitem__(self, idx: int) -> Tuple[np.ndarray, np.ndarray]:
+        """Return a sequence and its labels by index."""
+        seq = self.seqs[idx]
+        label = self.labels[idx]
+        return seq.to_onehot(), label
+
+my_dataset = MyData(intervals, genome, labels)
+my_dataloader = create_dataloader(my_dataset, batch_size=32, shuffle=True)
+```
+
+### Custom Model Development
+```python
+import torch
+from DeepGeSeq.Model import BaseModel
+
+class MyModel(BaseModel):
+    def __init__(self, input_size=1000, output_size=1):
+        super().__init__()
+        self.conv = torch.nn.Conv1d(4, 64, 3)
+        self.fc = torch.nn.Linear(64 * (input_size-2), output_size)
+    
+    def forward(self, x):
+        x = self.conv(x)
+        x = x.view(x.size(0), -1)
+        return self.fc(x)
+```
+
+### Custom Training Loop
+```python
+from DeepGeSeq.DL import Trainer
+
+# Initialize trainer with custom settings
+trainer = Trainer(
+    model=my_model,
+    criterion=torch.nn.BCELoss(),
+    optimizer=torch.optim.Adam(my_model.parameters()),
+    device=device,
+    checkpoint_dir="checkpoints",
+    use_tensorboard=True
+)
+
+# Train model
+trainer.train(
+    my_dataloader,
+    my_dataloader,
+    epochs=100,
+    early_stopping=True
+)
+```
+
+## Contributing
+
+We welcome contributions! Please see our [contributing guidelines](CONTRIBUTING.md) for details.
+
+## Citation
+
+If you use DeepGeSeq in your research, please cite:
+```bibtex
+@article{li2024deepgeseq,
+  title={DeepGeSeq: A systematic deep learning toolkit for genomics},
+  author={Li, Jiaqi and Wu, Hanyu and others},
+  journal={},
+  year={2024}
+}
+```
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Contact
+
+- Issues: Please use the [GitHub issue tracker](https://github.com/JiaqiLiZju/DeepGeSeq/issues)
+- Email: jiaqili@zju.edu.cn
 
 ## News
 - 2020.03: DeepGeSeq is quite unstable under activate development.
