@@ -99,7 +99,7 @@ dgs {train, evaluate, explain, predict} --config config.json
 ### Complete Configuration
 ```python
 complete_configs = {
-    "modes": ["train", "evaluate", "predict"],  define the mode of the run, must be one of the example modes
+    "modes": ["train", "evaluate", "predict"], # define the mode of the run, must be one of the example modes
     "device": "cuda", # define the device to run the model
     "output_dir": "Test", # define the output directory
     
