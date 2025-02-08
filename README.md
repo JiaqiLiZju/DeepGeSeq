@@ -1,7 +1,5 @@
 # DeepGeSeq 
 
-<div align=left><img src="./Figures/Logo.png" width="80px"></img></div>
-
 DeepGeSeq is a systematic and easy-to-use deep learning toolkit for genomics data analysis. It provides comprehensive support for modern deep learning architectures and analysis pipelines in genomics research.
 
 <div align=center><img src="./Figures/DeepGeSeq.png" width="450px"></img></div>
@@ -94,7 +92,75 @@ dgs {train, evaluate, explain, predict} --config config.json
 
 ```
 
-## Configuration Examples
+##  Examples
+
+### Input files
+
+Genome file: `GRCh38.p13.genome.fa.gz`
+
+Intervals file: `random_regions.bed`
+
+BigWig file: `hg38.gc5Base.bw`
+
+VCF file: `test.vcf`
+
+
+### Minimal Configuration
+```python
+minimal_configs = {
+    "modes" : ["train", "evaluate", "explain", "predict"], # define the mode of the run, must be one of the example modes
+    "device": "cuda", # define the device to run the model
+    "output_dir": "Test", # define the output directory
+    "data": { # define the data for the run
+        "genome_path": "Test/reference_grch38p13/GRCh38.p13.genome.fa.gz", # define the genome file
+        "intervals_path": "Test/random_regions.bed", # define the intervals file, each line is a region, and it defines the data samples
+        "target_tasks": [ # define the target tasks for the run
+            {
+                "task_name": "gc_content", # define the task name
+                "file_path": "Test/hg38.gc5Base.bw", # define the file path
+                "file_type": "bigwig", # define the file type, currently support "bigwig" and "bed"
+            }, # define the second task, etc.
+            {
+                "task_name": "recomb",
+                "file_path": "Test/recombAvg.bw",
+                "file_type": "bigwig",                
+            }
+        ]
+    },
+    "train": { # define the training settings
+        "optimizer": { # define the optimizer
+            "type": "Adam", # define the optimizer type
+            "lr": 0.001 # define the learning rate
+        },
+        "criterion": { # define the loss function
+            "type": "MSELoss" # define the loss function type, which should be adjusted according to the task, for example, "BCELoss" for binary classification (0/1), "MSELoss" for regression (continuous values)
+        }
+    },
+    "model": { # define the model
+        "type": "CNN", # define the model type
+        "args":{
+          "output_size": 2, # define the model arguments, which should be adjusted according to the task, for example, "output_size" should be equal to the number of tasks
+          } 
+    },
+    "explain":{"target":0}, # define the target task for explanation, which should be adjusted according to the task, for example, "target":0 for the first task
+    "predict":{"vcf_path":"Test/test.vcf", # define the vcf file path for prediction
+              "sequence_length":1000 # define the sequence length for prediction, which means the length of the sequence to be predicted, it usually should be the same as the sequence length used in model
+              }
+}
+```
+
+### Output files
+
+- `checkpoints/`: Checkpoints for the model parameters
+
+- `Test/metrics/`: Metrics for the model
+
+- `Test/motif_results/`: Motif results for the model
+
+- `Test/predictions/`: Predictions for the model
+
+
+## Advanced Usage
 
 ### Complete Configuration
 ```python
@@ -163,52 +229,6 @@ complete_configs = {
 }
 ```
 
-### Minimal Configuration
-```python
-minimal_configs = {
-    "modes" : ["train", "evaluate", "explain", "predict"], # define the mode of the run, must be one of the example modes
-    "device": "cuda", # define the device to run the model
-    "output_dir": "Test", # define the output directory
-    "data": { # define the data for the run
-        "genome_path": "Test/reference_grch38p13/GRCh38.p13.genome.fa.gz", # define the genome file
-        "intervals_path": "Test/random_regions.bed", # define the intervals file, each line is a region, and it defines the data samples
-        "target_tasks": [ # define the target tasks for the run
-            {
-                "task_name": "gc_content", # define the task name
-                "file_path": "Test/hg38.gc5Base.bw", # define the file path
-                "file_type": "bigwig", # define the file type, currently support "bigwig" and "bed"
-            }, # define the second task, etc.
-            {
-                "task_name": "recomb",
-                "file_path": "Test/recombAvg.bw",
-                "file_type": "bigwig",                
-            }
-        ]
-    },
-    "train": { # define the training settings
-        "optimizer": { # define the optimizer
-            "type": "Adam", # define the optimizer type
-            "lr": 0.001 # define the learning rate
-        },
-        "criterion": { # define the loss function
-            "type": "MSELoss" # define the loss function type, which should be adjusted according to the task, for example, "BCELoss" for binary classification (0/1), "MSELoss" for regression (continuous values)
-        }
-    },
-    "model": { # define the model
-        "type": "CNN", # define the model type
-        "args":{
-          "output_size": 2, # define the model arguments, which should be adjusted according to the task, for example, "output_size" should be equal to the number of tasks
-          } 
-    },
-    "explain":{"target":0}, # define the target task for explanation, which should be adjusted according to the task, for example, "target":0 for the first task
-    "predict":{"vcf_path":"Test/test.vcf", # define the vcf file path for prediction
-              "sequence_length":1000 # define the sequence length for prediction, which means the length of the sequence to be predicted, it usually should be the same as the sequence length used in model
-              }
-}
-```
-
-## Advanced Usage
-
 ### Define your data
 ```python
 from DeepGeSeq.Dataset import SeqDataset
@@ -272,6 +292,23 @@ trainer.train(
     epochs=100,
     early_stopping=True
 )
+```
+
+### Evaluate model
+```python
+# Validate model predictions
+predictions, targets = trainer.validate(my_dataloader)
+
+# Evaluate model performance
+from DeepGeSeq.DL import Evaluator
+metrics = Evaluator.calculate_classification_metrics(targets, predictions)
+metrics = Evaluator.calculate_regression_metrics(targets, predictions)
+```
+
+### Predict on new data
+```python
+# model predict on new data
+predictions = trainer.predict(my_dataloader)
 ```
 
 ## Contributing
