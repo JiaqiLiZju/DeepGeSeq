@@ -1,0 +1,38 @@
+{
+    "modes" : ["train", "evaluate", "explain", "predict"],
+    "device": "cuda",
+    "output_dir": "Test",
+    "data": {
+        "genome_path": "Test/reference_grch38p13/GRCh38.p13.genome.fa.gz",
+        "intervals_path": "Test/random_regions.bed",
+        "target_tasks": [
+            {
+                "task_name": "gc_content",
+                "file_path": "Test/hg38.gc5Base.bw",
+                "file_type": "bigwig"
+            },
+            {
+                "task_name": "recomb",
+                "file_path": "Test/recombAvg.bw",
+                "file_type": "bigwig"
+            }
+        ]
+    },
+    "train": {
+        "optimizer": {
+            "type": "Adam",
+            "lr": 0.001
+        },
+        "criterion": {
+            "type": "MSELoss"
+        }
+    },
+    "model": {
+        "type": "CNN",
+        "args":{"output_size": 2}
+    },
+    "explain":{"target":0},
+    "predict":{"vcf_path":"Test/test.vcf",
+              "sequence_length":1000
+              }
+}

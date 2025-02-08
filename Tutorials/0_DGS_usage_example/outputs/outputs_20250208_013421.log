@@ -1,0 +1,216 @@
+2025-02-08 01:34:21,488 - dgs - INFO - PyTorch benchmark mode enabled
+2025-02-08 01:34:22,053 - dgs - INFO - Using device: cuda:0
+2025-02-08 01:34:22,057 - dgs - INFO - Initializing components...
+2025-02-08 01:34:22,057 - dgs - INFO - Initializing model...
+2025-02-08 01:34:22,515 - dgs - INFO - Initializing optimizer...
+2025-02-08 01:34:30,945 - dgs - INFO - Initializing criterion...
+2025-02-08 01:34:30,947 - dgs - INFO - Initializing trainer...
+2025-02-08 01:34:31,094 - dgs - INFO - Starting training mode...
+2025-02-08 01:34:31,095 - dgs - INFO - Preparing data for training...
+2025-02-08 01:35:08,852 - dgs - INFO - Training model...
+2025-02-08 01:35:17,729 - dgs - INFO - Saved checkpoint to checkpoint/best_model.pt
+2025-02-08 01:35:17,731 - dgs - INFO - 
+==================================================
+Epoch: 0
+Time: 8.87s
+Training Loss: 126.4709
+Validation Loss: 73.0621
+Validation Metric: 0.0000
+Best Validation Loss: 73.0621
+Best Validation Metric: 0.0000
+Best Epoch: 0
+==================================================
+
+2025-02-08 01:35:31,149 - dgs - INFO - Saved checkpoint to checkpoint/best_model.pt
+2025-02-08 01:35:31,151 - dgs - INFO - 
+==================================================
+Epoch: 1
+Time: 6.53s
+Training Loss: 51.5525
+Validation Loss: 57.4303
+Validation Metric: 0.0000
+Best Validation Loss: 57.4303
+Best Validation Metric: 0.0000
+Best Epoch: 1
+==================================================
+
+2025-02-08 01:35:37,788 - dgs - INFO - 
+==================================================
+Epoch: 2
+Time: 6.54s
+Training Loss: 51.3748
+Validation Loss: 61.1118
+Validation Metric: 0.0000
+Best Validation Loss: 57.4303
+Best Validation Metric: 0.0000
+Best Epoch: 1
+==================================================
+
+2025-02-08 01:35:44,469 - dgs - INFO - 
+==================================================
+Epoch: 3
+Time: 6.57s
+Training Loss: 49.0535
+Validation Loss: 61.4875
+Validation Metric: 0.0000
+Best Validation Loss: 57.4303
+Best Validation Metric: 0.0000
+Best Epoch: 1
+==================================================
+
+2025-02-08 01:35:51,136 - dgs - INFO - Saved checkpoint to checkpoint/best_model.pt
+2025-02-08 01:35:51,137 - dgs - INFO - 
+==================================================
+Epoch: 4
+Time: 6.57s
+Training Loss: 47.6977
+Validation Loss: 52.7163
+Validation Metric: 0.0000
+Best Validation Loss: 52.7163
+Best Validation Metric: 0.0000
+Best Epoch: 4
+==================================================
+
+2025-02-08 01:35:57,781 - dgs - INFO - Saved checkpoint to checkpoint/best_model.pt
+2025-02-08 01:35:57,783 - dgs - INFO - 
+==================================================
+Epoch: 5
+Time: 6.54s
+Training Loss: 47.5924
+Validation Loss: 52.0628
+Validation Metric: 0.0000
+Best Validation Loss: 52.0628
+Best Validation Metric: 0.0000
+Best Epoch: 5
+==================================================
+
+2025-02-08 01:36:04,401 - dgs - INFO - 
+==================================================
+Epoch: 6
+Time: 6.52s
+Training Loss: 46.5477
+Validation Loss: 52.6500
+Validation Metric: 0.0000
+Best Validation Loss: 52.0628
+Best Validation Metric: 0.0000
+Best Epoch: 5
+==================================================
+
+2025-02-08 01:36:11,028 - dgs - INFO - Saved checkpoint to checkpoint/best_model.pt
+2025-02-08 01:36:11,030 - dgs - INFO - 
+==================================================
+Epoch: 7
+Time: 6.53s
+Training Loss: 46.5063
+Validation Loss: 50.3994
+Validation Metric: 0.0000
+Best Validation Loss: 50.3994
+Best Validation Metric: 0.0000
+Best Epoch: 7
+==================================================
+
+2025-02-08 01:36:17,629 - dgs - INFO - 
+==================================================
+Epoch: 8
+Time: 6.50s
+Training Loss: 45.6114
+Validation Loss: 52.3379
+Validation Metric: 0.0000
+Best Validation Loss: 50.3994
+Best Validation Metric: 0.0000
+Best Epoch: 7
+==================================================
+
+2025-02-08 01:36:24,171 - dgs - INFO - Saved checkpoint to checkpoint/best_model.pt
+2025-02-08 01:36:24,172 - dgs - INFO - 
+==================================================
+Epoch: 9
+Time: 6.44s
+Training Loss: 44.5950
+Validation Loss: 49.6711
+Validation Metric: 0.0000
+Best Validation Loss: 49.6711
+Best Validation Metric: 0.0000
+Best Epoch: 9
+==================================================
+
+2025-02-08 01:36:30,081 - dgs - INFO - 
+==================================================
+Epoch: 10
+Time: 5.83s
+Training Loss: 44.0404
+Validation Loss: 53.3925
+Validation Metric: 0.0000
+Best Validation Loss: 49.6711
+Best Validation Metric: 0.0000
+Best Epoch: 9
+==================================================
+
+2025-02-08 01:36:36,703 - dgs - INFO - 
+==================================================
+Epoch: 11
+Time: 6.54s
+Training Loss: 45.2003
+Validation Loss: 49.9261
+Validation Metric: 0.0000
+Best Validation Loss: 49.6711
+Best Validation Metric: 0.0000
+Best Epoch: 9
+==================================================
+
+2025-02-08 01:36:43,455 - dgs - INFO - 
+==================================================
+Epoch: 12
+Time: 6.52s
+Training Loss: 43.9915
+Validation Loss: 50.6445
+Validation Metric: 0.0000
+Best Validation Loss: 49.6711
+Best Validation Metric: 0.0000
+Best Epoch: 9
+==================================================
+
+2025-02-08 01:36:50,065 - dgs - INFO - 
+==================================================
+Epoch: 13
+Time: 6.52s
+Training Loss: 43.7836
+Validation Loss: 50.3431
+Validation Metric: 0.0000
+Best Validation Loss: 49.6711
+Best Validation Metric: 0.0000
+Best Epoch: 9
+==================================================
+
+2025-02-08 01:36:56,720 - dgs - INFO - 
+==================================================
+Epoch: 14
+Time: 6.57s
+Training Loss: 45.0481
+Validation Loss: 49.7238
+Validation Metric: 0.0000
+Best Validation Loss: 49.6711
+Best Validation Metric: 0.0000
+Best Epoch: 9
+==================================================
+
+2025-02-08 01:36:56,811 - dgs - INFO - Early stopping at epoch 14
+2025-02-08 01:36:56,830 - dgs - INFO - Saved checkpoint to checkpoint/final_model.pt
+2025-02-08 01:36:56,830 - dgs - INFO - 
+Training completed in 107.97s
+Best validation loss: 49.6711
+Best validation metric: 0.0000
+Best epoch: 9
+2025-02-08 01:36:56,842 - dgs - INFO - Loaded checkpoint from checkpoint/best_model.pt
+2025-02-08 01:36:56,842 - dgs - INFO - Training completed.
+2025-02-08 01:36:56,843 - dgs - INFO - Starting evaluation mode...
+2025-02-08 01:36:56,843 - dgs - INFO - Preparing data for evaluation...
+2025-02-08 01:36:56,844 - dgs - INFO - Evaluating model...
+2025-02-08 01:37:06,441 - dgs - INFO - Loaded checkpoint from checkpoint/best_model.pt
+2025-02-08 01:37:07,312 - dgs - INFO - Evaluation completed.
+2025-02-08 01:37:07,314 - dgs - INFO - Starting prediction mode...
+2025-02-08 01:37:07,314 - dgs - INFO - Preparing data for prediction...
+2025-02-08 01:37:07,488 - dgs - INFO - Predicting variants...
+2025-02-08 01:37:07,536 - dgs - INFO - Variant predictions saved to outputs/variant_predictions.csv
+2025-02-08 01:37:07,537 - dgs - INFO - Prediction completed.
+2025-02-08 01:37:07,537 - dgs - INFO - Successfully completed run command!

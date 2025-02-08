@@ -1,0 +1,70 @@
+{
+    "modes": [
+        "train",
+        "evaluate",
+        "predict"
+    ],
+    "device": "cuda",
+    "output_dir": "Test",
+    "data": {
+        "genome_path": "Test/reference_grch38p13/GRCh38.p13.genome.fa.gz",
+        "intervals_path": "Test/random_regions.bed",
+        "target_tasks": [
+            {
+                "task_name": "gc_content",
+                "file_path": "Test/hg38.gc5Base.bw",
+                "file_type": "bigwig"
+            },
+            {
+                "task_name": "recomb",
+                "file_path": "Test/recombAvg.bw",
+                "file_type": "bigwig"
+            }
+        ],
+        "train_test_split": "random_split",
+        "test_size": 0.2,
+        "val_size": 0.2,
+        "test_chroms": [
+            "chr8"
+        ],
+        "val_chroms": [
+            "chr7"
+        ],
+        "strand_aware": true,
+        "batch_size": 4
+    },
+    "model": {
+        "type": "CNN",
+        "args": {
+            "output_size": 2
+        }
+    },
+    "train": {
+        "optimizer": {
+            "type": "Adam",
+            "params": {
+                "lr": 0.001
+            }
+        },
+        "criterion": {
+            "type": "MSELoss",
+            "params": {}
+        },
+        "patience": 10,
+        "max_epochs": 500,
+        "checkpoint_dir": "checkpoints",
+        "use_tensorboard": false,
+        "tensorboard_dir": "tensorboard"
+    },
+    "explain": {
+        "target": 0,
+        "output_dir": "motif_results",
+        "max_seqlets": 2000
+    },
+    "predict": {
+        "vcf_path": "Test/test.vcf",
+        "sequence_length": 1000,
+        "metric_func": "diff",
+        "mean_by_tasks": true
+    }
+}
