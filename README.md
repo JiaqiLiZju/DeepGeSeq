@@ -33,21 +33,14 @@ DeepGeSeq is a systematic and easy-to-use deep learning toolkit for genomics dat
 ### Dependencies
 ```bash
 # Core dependencies
+tqdm
 numpy
 pandas>=0.21
 matplotlib==3.0.*
-h5py==2.10.0  # Note: h5py > 2.10 may return b'strings' when reading h5file
-tqdm
+h5py==2.10.0
 scikit-learn>=0.21.2
-torch>=1.10.1  # Required for tensorboard and ModifyOutputHook
-tensorboard==2.7.0
-captum==0.5.0
-networkx
-pillow
-
-# Optional external tools
-meme==5.4.1  # For motif database comparison
-homer2      # For motif search in activated seqlets
+torch>=1.10.1
+tensorboard>=2.7.0
 ```
 
 ### Installation Methods
@@ -159,9 +152,6 @@ minimal_configs = {
 
 - `Test/predictions/`: Predictions for the model
 
-
-## Advanced Usage
-
 ### Complete Configuration
 ```python
 complete_configs = {
@@ -228,6 +218,10 @@ complete_configs = {
     }
 }
 ```
+
+## Advanced Usage
+
+Use DeepGeSeq in your own project, you can define your own data, model, and training loop.
 
 ### Define your data
 ```python
