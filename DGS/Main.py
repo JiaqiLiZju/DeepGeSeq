@@ -1,12 +1,25 @@
 """
-This module provides Command line interface for DGS (Deep Genomic Sequence Analysis Toolkit)
+DGS (Deep Genomic Sequence Analysis Toolkit) - Main Module
 
-The main entry point for the DGS command line interface. It provides the following commands:
-- train: Train a model
-- evaluate: Evaluate a trained model
-- explain: Generate model explanations
-- predict: Make predictions on new data
-- run: Run a complete pipeline with multiple modes
+This module serves as the main entry point for the DGS command line interface. It provides a comprehensive
+set of tools for genomic sequence analysis using deep learning approaches.
+
+Key Features:
+    - Model Training: Train deep learning models on genomic sequences
+    - Model Evaluation: Assess model performance with various metrics
+    - Model Explanation: Generate interpretable explanations for model predictions
+    - Sequence Prediction: Make predictions on new genomic sequences
+    - Pipeline Execution: Run complete analysis pipelines with multiple modes
+
+Command Line Interface:
+    train    - Train a new model or continue training an existing one
+    evaluate - Evaluate model performance on test data
+    explain  - Generate model explanations and visualizations
+    predict  - Make predictions on new sequences
+    run      - Execute a complete analysis pipeline
+    config   - Generate or manage configuration files
+
+For detailed usage examples, use the --help flag with any command.
 """
 
 import sys
@@ -20,7 +33,20 @@ from .Config import ConfigManager, DgsConfig, ConfigError
 from .Cli import DgsCLI
 
 def create_parser() -> argparse.ArgumentParser:
-    """Create the main argument parser with only essential arguments."""
+    """
+    Create and configure the main argument parser for the DGS command line interface.
+    
+    Returns:
+        argparse.ArgumentParser: Configured argument parser with the following features:
+            - Global arguments for verbosity, GPU selection, and random seed
+            - Subcommands for different operational modes (train, evaluate, etc.)
+            - Configuration file management
+            - Example generation capabilities
+    
+    Example Usage:
+        parser = create_parser()
+        args = parser.parse_args()
+    """
     parser = argparse.ArgumentParser(
         description="DGS: Deep Learning Toolkit for Genomics",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -76,7 +102,19 @@ def create_parser() -> argparse.ArgumentParser:
     return parser
 
 def main():
-    """Main entry point for DGS CLI."""
+    """
+    Main entry point for the DGS command line interface.
+    
+    This function:
+    1. Parses command line arguments
+    2. Handles configuration file generation and loading
+    3. Sets up the execution environment (GPU/CPU, logging, random seed)
+    4. Initializes and executes the requested command
+    5. Provides error handling and user feedback
+    
+    The function will exit with status code 1 if any errors occur during execution,
+    such as configuration errors or runtime exceptions.
+    """
     # Parse arguments
     parser = create_parser()
     args = parser.parse_args()

@@ -1,9 +1,42 @@
-"""Trainer module for model training and evaluation in DGS.
+"""
+Deep Learning Model Trainer Module for DGS
 
-This module provides:
-1. Trainer class for model training and evaluation
-2. Training utilities and callbacks
-3. Metrics tracking and logging
+This module provides a comprehensive training framework for deep learning models in genomic sequence analysis.
+It includes classes and utilities for model training, evaluation, and monitoring.
+
+Key Components:
+1. Trainer Class:
+   - Manages model training and validation loops
+   - Implements early stopping and learning rate scheduling
+   - Handles checkpointing and model state management
+   - Provides metrics tracking and visualization
+
+2. Training Utilities:
+   - Batch preparation and device management
+   - Gradient clipping and optimization
+   - TensorBoard integration for monitoring
+   - Learning rate visualization
+
+3. Metrics Management:
+   - Training and validation metrics tracking
+   - Early stopping based on validation performance
+   - Custom metric computation for genomic tasks
+   - Visualization of training progress
+
+Usage Example:
+    trainer = Trainer(
+        model=model,
+        criterion=loss_fn,
+        optimizer=optimizer,
+        device=device,
+        patience=10
+    )
+    metrics = trainer.train(
+        train_loader=train_loader,
+        val_loader=val_loader,
+        epochs=100,
+        early_stopping=True
+    )
 """
 
 import logging
@@ -19,11 +52,25 @@ from torch.utils.data import DataLoader
 import numpy as np
 from tqdm import tqdm
 
-logger = logging.getLogger("dgs.trainer")
+logger = logging.getLogger("dgs")
 
 @dataclass
 class TrainerMetrics:
-    """Training metrics tracker."""
+    """
+    Training metrics tracker for monitoring model performance.
+
+    This class maintains lists of training and validation metrics throughout
+    the training process, as well as tracking the best model performance.
+
+    Attributes:
+        train_losses (List[float]): History of training losses
+        val_losses (List[float]): History of validation losses
+        train_metrics (List[float]): History of training metrics
+        val_metrics (List[float]): History of validation metrics
+        best_val_loss (float): Best validation loss achieved
+        best_val_metric (float): Best validation metric achieved
+        best_epoch (int): Epoch number where best performance was achieved
+    """
     train_losses: List[float] = field(default_factory=list)
     val_losses: List[float] = field(default_factory=list)
     train_metrics: List[float] = field(default_factory=list)
@@ -34,7 +81,20 @@ class TrainerMetrics:
     
 @dataclass
 class TrainerState:
-    """Trainer state for checkpointing."""
+    """
+    Trainer state container for checkpointing and resuming training.
+
+    This class encapsulates all necessary information to save and restore
+    the training state, including model and optimizer states.
+
+    Attributes:
+        epoch (int): Current epoch number
+        global_step (int): Total number of training steps
+        best_val_loss (float): Best validation loss achieved
+        model_state (Dict): Model's state dictionary
+        optimizer_state (Dict): Optimizer's state dictionary
+        metrics (TrainerMetrics): Training metrics history
+    """
     epoch: int = 0
     global_step: int = 0
     best_val_loss: float = float('inf')
@@ -43,13 +103,24 @@ class TrainerState:
     metrics: TrainerMetrics = field(default_factory=TrainerMetrics)
 
 class Trainer:
-    """Model trainer for deep learning models.
-    
-    Handles:
-    - Model training and validation
-    - Metrics tracking and early stopping
-    - Checkpointing and model saving
-    - Prediction and evaluation
+    """
+    Comprehensive model trainer for deep learning genomic sequence analysis.
+
+    This class provides a complete training framework with the following features:
+    - Flexible training and validation loops
+    - Automatic device management (CPU/GPU)
+    - Checkpoint saving and loading
+    - Early stopping and learning rate scheduling
+    - TensorBoard integration for monitoring
+    - Custom metric computation and tracking
+    - Progress visualization
+
+    The trainer handles all aspects of the training process, including:
+    - Batch preparation and device placement
+    - Forward and backward passes
+    - Gradient clipping and optimization
+    - Metrics computation and logging
+    - Model state management
     """
     
     def __init__(
@@ -240,15 +311,24 @@ class Trainer:
         epoch: int,
         validate_fn: Optional[Callable] = None
     ) -> float:
-        """Train one epoch.
-        
+        """
+        Train the model for one epoch.
+
+        This method:
+        1. Sets the model to training mode
+        2. Iterates over all batches in the training loader
+        3. Performs forward and backward passes
+        4. Updates model parameters
+        5. Tracks metrics and losses
+        6. Optionally performs validation
+
         Args:
-            train_loader: Training data loader
+            train_loader: DataLoader containing training data
             epoch: Current epoch number
-            validate_fn: Optional validation function
-            
+            validate_fn: Optional function for validation during training
+
         Returns:
-            Average training loss
+            float: Average training loss for the epoch
         """
         self.model.train()
         total_loss = 0
@@ -306,15 +386,25 @@ class Trainer:
         val_loader: DataLoader,
         return_predictions: bool = False
     ) -> Union[Tuple[float, float], Tuple[float, float, torch.Tensor, torch.Tensor]]:
-        """Validate model.
-        
+        """
+        Validate the model on a validation dataset.
+
+        This method:
+        1. Sets the model to evaluation mode
+        2. Performs forward passes without gradient computation
+        3. Computes validation loss and metrics
+        4. Optionally returns predictions and targets
+
         Args:
-            val_loader: Validation data loader
-            return_predictions: Whether to return predictions
-            
+            val_loader: DataLoader containing validation data
+            return_predictions: Whether to return model predictions and targets
+
         Returns:
-            Tuple of (validation loss, validation metric)
-            If return_predictions=True, also returns (predictions, targets)
+            If return_predictions is False:
+                tuple: (average validation loss, average validation metric)
+            If return_predictions is True:
+                tuple: (average validation loss, average validation metric,
+                       all predictions tensor, all targets tensor)
         """
         self.model.eval()
         total_loss = 0
@@ -361,17 +451,29 @@ class Trainer:
         early_stopping: bool = True,
         verbose: bool = True
     ) -> TrainerMetrics:
-        """Train model.
-        
+        """
+        Train the model for multiple epochs with validation.
+
+        This method implements the complete training loop with:
+        - Epoch-wise training and validation
+        - Early stopping based on validation performance
+        - Learning rate scheduling
+        - Progress tracking and visualization
+        - Checkpoint management
+
         Args:
-            train_loader: Training data loader
-            val_loader: Validation data loader
-            epochs: Number of epochs
+            train_loader: DataLoader containing training data
+            val_loader: DataLoader containing validation data
+            epochs: Maximum number of epochs to train
             early_stopping: Whether to use early stopping
-            verbose: Whether to show training logs
-            
+            verbose: Whether to print progress information
+
         Returns:
-            Training metrics
+            TrainerMetrics: Complete training history and metrics
+
+        Note:
+            The best model state is automatically saved when validation
+            performance improves.
         """
         start_time = time.time()
         no_improve = 0

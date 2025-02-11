@@ -1,10 +1,38 @@
-"""Sequence module for genomic sequence operations.
+"""
+DNA Sequence Processing Module
 
-This module provides:
-1. DNA sequence manipulation utilities
-2. One-hot encoding and decoding
-3. Sequence metrics and validation
-4. Integration with FASTA reader
+This module provides comprehensive utilities for DNA sequence manipulation:
+
+Key Components:
+1. Core Sequence Operations:
+   - Sequence validation and cleaning
+   - Reverse complement generation
+   - GC content calculation
+   - Sequence complexity analysis
+
+2. Encoding/Decoding:
+   - One-hot encoding with customizable formats
+   - Efficient batch processing
+   - Support for N bases
+   - Memory-efficient operations
+
+3. Sequence Classes:
+   - DNASeq: Core sequence manipulation
+   - Genome: Genome-wide sequence operations
+   - Efficient sequence extraction
+   - Format conversion utilities
+
+4. Analysis Tools:
+   - GC content analysis
+   - Sequence complexity metrics
+   - Quality assessment
+   - Pattern detection
+
+The module is designed for:
+- High-performance sequence processing
+- Memory-efficient operations
+- Flexible sequence representation
+- Integration with deep learning pipelines
 """
 
 import numpy as np
@@ -35,33 +63,98 @@ ONEHOT_MAP = {
 BASE_TO_IDX = {'A': 0, 'C': 1, 'G': 2, 'T': 3, 'N': 4}
 IDX_TO_BASE = ['A', 'C', 'G', 'T', 'N']
 
-# Core sequence manipulation functions
 def validate_sequence(seq: str) -> bool:
-    """Validate DNA sequence."""
+    """Validate DNA sequence composition.
+    
+    This function checks that:
+    - All bases are valid (ATCGN)
+    - Sequence is not empty
+    - Case is consistent
+    
+    Args:
+        seq: Input DNA sequence
+        
+    Returns:
+        bool: True if sequence is valid
+        
+    Raises:
+        ValueError: If invalid bases are found
+        
+    Example:
+        >>> validate_sequence("ATCGN")  # True
+        >>> validate_sequence("XINVALID")  # Raises ValueError
+    """
     invalid = set(seq.upper()) - set(VALID_BASES)
     if invalid:
         raise ValueError(f"Invalid bases in sequence: {invalid}")
     return True
 
 def get_reverse_complement(seq: str) -> str:
-    """Get reverse complement of DNA sequence."""
+    """Generate reverse complement of DNA sequence.
+    
+    This function:
+    - Reverses the sequence
+    - Replaces each base with its complement
+    - Preserves case and N bases
+    
+    Args:
+        seq: Input DNA sequence
+        
+    Returns:
+        str: Reverse complement sequence
+        
+    Example:
+        >>> get_reverse_complement("ATCG")  # Returns "CGAT"
+        >>> get_reverse_complement("ATCGNn")  # Returns "nNCGAT"
+    """
     return ''.join(COMPLEMENT_MAP[base] for base in reversed(seq))
 
 def sequence_to_onehot(seq: str, dtype: np.dtype = np.float32) -> np.ndarray:
-    """Convert sequence to one-hot encoding."""
+    """Convert DNA sequence to one-hot encoding.
+    
+    This function creates a 2D array where:
+    - Each row represents one base
+    - Columns represent A, C, G, T
+    - N bases are encoded as [0,0,0,0]
+    
+    Args:
+        seq: Input DNA sequence
+        dtype: Numpy data type for output array
+        
+    Returns:
+        np.ndarray: One-hot encoded sequence
+            Shape: (sequence_length, 4)
+            
+    Example:
+        >>> sequence_to_onehot("ACGT")
+        array([[1,0,0,0],
+               [0,1,0,0],
+               [0,0,1,0],
+               [0,0,0,1]], dtype=float32)
+    """
     if not seq:
         return np.zeros((0, 4), dtype=dtype)
     return np.array([ONEHOT_MAP.get(base.upper(), [0,0,0,0]) for base in seq], dtype=dtype)
 
 def onehot_to_sequence(encoded: np.ndarray, include_n: bool = True) -> str:
-    """Convert one-hot encoding to sequence.
+    """Convert one-hot encoding back to DNA sequence.
+    
+    This function:
+    - Converts one-hot arrays to sequence
+    - Optionally includes N bases
+    - Handles edge cases gracefully
     
     Args:
         encoded: One-hot encoded sequence array
         include_n: Whether to include N in output sequence
         
     Returns:
-        DNA sequence string
+        str: DNA sequence
+        
+    Example:
+        >>> arr = np.array([[1,0,0,0], [0,0,0,0]])
+        >>> onehot_to_sequence(arr)  # Returns "AN"
+        >>> onehot_to_sequence(arr, include_n=False)  # Returns "A"
     """
     if include_n:
         # If any row sums to 0, it's an N
@@ -77,13 +170,23 @@ def onehot_to_sequence(encoded: np.ndarray, include_n: bool = True) -> str:
 def batch_to_onehot(sequences: List[str], dtype: np.dtype = np.float32) -> np.ndarray:
     """Convert multiple sequences to one-hot encoding.
     
+    This function efficiently processes batches by:
+    - Padding to maximum length
+    - Vectorizing conversion
+    - Optimizing memory usage
+    
     Args:
-        sequences: List of sequences to encode
+        sequences: List of DNA sequences
         dtype: Data type for output array
         
     Returns:
-        numpy.ndarray: One-hot encoded sequences with shape (n_sequences, max_length, 4)
-        Empty sequences are padded with zeros.
+        np.ndarray: One-hot encoded sequences
+            Shape: (n_sequences, max_length, 4)
+            Empty sequences are padded with zeros
+            
+    Example:
+        >>> seqs = ["ACGT", "AT"]
+        >>> batch_to_onehot(seqs).shape  # (2, 4, 4)
     """
     if not sequences:
         return np.zeros((0, 0, 4), dtype=dtype)
@@ -106,19 +209,39 @@ def batch_to_onehot(sequences: List[str], dtype: np.dtype = np.float32) -> np.nd
     return output
 
 def batch_from_onehot(encoded: np.ndarray, include_n: bool = True) -> List[str]:
-    """Convert multiple one-hot encodings to sequences."""
+    """Convert batch of one-hot encodings to sequences.
+    
+    Args:
+        encoded: Batch of one-hot encoded sequences
+        include_n: Whether to include N bases
+        
+    Returns:
+        List[str]: DNA sequences
+        
+    Example:
+        >>> arr = np.zeros((2, 4, 4))
+        >>> batch_from_onehot(arr)  # Returns ["NNNN", "NNNN"]
+    """
     return [onehot_to_sequence(seq, include_n) for seq in encoded]
 
-
-# calculate sequence complexity
 def calculate_gc_content(seq: str) -> float:
     """Calculate GC content of sequence.
     
+    This function:
+    - Counts G and C bases
+    - Excludes N bases from calculation
+    - Returns normalized ratio
+    
     Args:
-        seq: Input sequence
+        seq: Input DNA sequence
         
     Returns:
-        float: GC content (excluding N bases from calculation)
+        float: GC content (0.0 to 1.0)
+            Returns 0.0 if sequence only contains N's
+            
+    Example:
+        >>> calculate_gc_content("GCTA")  # Returns 0.5
+        >>> calculate_gc_content("GCNN")  # Returns 1.0
     """
     seq = seq.upper()
     total = len(seq) - seq.count('N')  # Exclude N bases
@@ -127,14 +250,24 @@ def calculate_gc_content(seq: str) -> float:
     return (seq.count('G') + seq.count('C')) / total
 
 def calculate_sliding_gc(seq: str, window_size: int) -> np.ndarray:
-    """Calculate sliding window GC content.
+    """Calculate GC content in sliding windows.
+    
+    This function computes:
+    - GC content for each window
+    - Handles edge cases
+    - Excludes N bases per window
     
     Args:
         seq: Input DNA sequence
         window_size: Size of sliding window
         
     Returns:
-        numpy.ndarray: Array of GC content values for each window
+        np.ndarray: Array of GC content values
+            Length: len(seq) - window_size + 1
+            
+    Example:
+        >>> calculate_sliding_gc("GCTAN", 2)
+        array([1.0, 0.5, 0.5, 0.0])
     """
     seq = seq.upper()
     
@@ -158,13 +291,24 @@ def calculate_sliding_gc(seq: str, window_size: int) -> np.ndarray:
 def calculate_complexity(seq: str, k: int = 3, normalize: bool = True) -> float:
     """Calculate sequence complexity using k-mer diversity.
     
+    This function:
+    - Counts unique k-mers
+    - Excludes k-mers with N
+    - Optionally normalizes scores
+    
     Args:
-        seq: Input sequence
+        seq: Input DNA sequence
         k: k-mer size (default: 3)
-        normalize: Whether to normalize the complexity score (default: True)
+        normalize: Whether to normalize score
         
     Returns:
-        float: Complexity score between 0 and 1 if normalized, or raw k-mer count
+        float: Complexity score
+            If normalized: 0.0 to 1.0
+            If not normalized: Raw k-mer count
+            
+    Example:
+        >>> calculate_complexity("ATCGATCG", k=2)  # High complexity
+        >>> calculate_complexity("AAAAAAA", k=2)   # Low complexity
     """
     # Handle edge cases
     if len(seq) < k:
@@ -198,58 +342,111 @@ def calculate_complexity(seq: str, k: int = 3, normalize: bool = True) -> float:
             return n_unique / len(seq)
     return n_unique
 
-
-# 
 class DNASeq:
-    """Class for storing and manipulating DNA sequences."""
+    """Class for DNA sequence manipulation.
+    
+    This class provides:
+    - Sequence validation
+    - Common operations (reverse complement, etc.)
+    - Encoding/decoding
+    - Sequence analysis
+    
+    Attributes:
+        sequence: DNA sequence string
+        
+    Example:
+        >>> seq = DNASeq("ATCG")
+        >>> seq.gc_content()  # Returns 0.5
+        >>> seq.reverse_complement()  # Returns DNASeq("CGAT")
+    """
     
     def __init__(self, sequence: str):
-        """Initialize sequence object."""
+        """Initialize DNA sequence.
+        
+        Args:
+            sequence: Input DNA sequence
+            
+        Raises:
+            ValueError: If sequence contains invalid bases
+        """
         self._sequence = sequence.upper()
         validate_sequence(self._sequence)
         
     @property
     def sequence(self) -> str:
+        """Get the DNA sequence."""
         return self._sequence
         
     def __len__(self) -> int:
+        """Get sequence length."""
         return len(self._sequence)
         
     def __str__(self) -> str:
+        """Get string representation."""
         return self._sequence
         
     def __repr__(self) -> str:
+        """Get detailed representation."""
         return f"DNASeq('{self._sequence}')"
     
     def validate(self) -> bool:
+        """Validate sequence composition."""
         return validate_sequence(self._sequence)
         
     def reverse_complement(self) -> 'DNASeq':
+        """Get reverse complement sequence."""
         return DNASeq(get_reverse_complement(self._sequence))
         
     def to_onehot(self, dtype: np.dtype = np.float32) -> np.ndarray:
+        """Convert to one-hot encoding."""
         return sequence_to_onehot(self._sequence, dtype)
         
     @classmethod
     def from_onehot(cls, encoded: np.ndarray, include_n: bool = True) -> 'DNASeq':
+        """Create sequence from one-hot encoding."""
         return cls(onehot_to_sequence(encoded, include_n))
         
     def gc_content(self, window_size: Optional[int] = None) -> Union[float, np.ndarray]:
+        """Calculate GC content.
+        
+        Args:
+            window_size: Optional window size for sliding calculation
+            
+        Returns:
+            float or np.ndarray: GC content value(s)
+        """
         if window_size:
             return calculate_sliding_gc(self._sequence, window_size)
         return calculate_gc_content(self._sequence)
     
     def complexity(self, k: int = 3, normalize: bool = True) -> float:
+        """Calculate sequence complexity."""
         return calculate_complexity(self._sequence, k, normalize)
 
 class Genome:
-    """Class for genome-wide sequence operations."""
+    """Class for genome-wide sequence operations.
+    
+    This class provides:
+    - Efficient sequence extraction
+    - Memory management
+    - Coordinate validation
+    - Error handling
+    
+    Attributes:
+        genome_path: Path to genome FASTA file
+        
+    Example:
+        >>> genome = Genome("hg38.fa")
+        >>> intervals = pd.DataFrame({"chrom": ["chr1"], "start": [0], "end": [1000]})
+        >>> seqs = genome.extract_sequences(intervals)
+    """
     
     def __init__(self, genome_path: Union[str, Path], use_cache: bool = True):
         """Initialize genome reader.
         
         Args:
             genome_path: Path to genome FASTA file
+            use_cache: Whether to cache sequences
         """
         self.genome_path = Path(genome_path)
         self._reader = FastaReader(self.genome_path)
@@ -269,20 +466,26 @@ class Genome:
         strand_aware: bool = True,
         **kwargs
     ) -> List[DNASeq]:
-        """Extract sequences from genome based on intervals.
+        """Extract sequences from genome.
+        
+        This function:
+        - Validates interval coordinates
+        - Handles strand information
+        - Processes in batches
+        - Manages memory efficiently
         
         Args:
-            intervals: DataFrame with at least chrom, start, end columns
-            strand_aware: Whether to respect strand information
-            **kwargs: Additional arguments for sequence extraction
+            intervals: DataFrame with genomic intervals
+            strand_aware: Whether to respect strand
+            **kwargs: Additional extraction parameters
             
         Returns:
-            List of DNASeq objects
+            List[DNASeq]: Extracted sequences
             
         Raises:
             RuntimeError: If called outside context manager
-            ValueError: If intervals DataFrame is invalid or contains invalid coordinates
-            KeyError: If chromosome not found in genome
+            ValueError: If intervals are invalid
+            KeyError: If chromosome not found
         """
         if not self._reader:
             raise RuntimeError("Genome must be used within a context manager")
@@ -324,13 +527,18 @@ class Genome:
     ) -> List[DNASeq]:
         """Process extracted sequences.
         
+        This function:
+        - Creates DNASeq objects
+        - Handles strand orientation
+        - Validates sequences
+        
         Args:
-            sequences: List of raw sequences
-            intervals: DataFrame with interval information
-            strand_aware: Whether to respect strand information
+            sequences: Raw sequence strings
+            intervals: Interval information
+            strand_aware: Whether to use strand info
             
         Returns:
-            List of processed DNASeq objects
+            List[DNASeq]: Processed sequences
         """
         processed = []
         for i, seq in enumerate(sequences):

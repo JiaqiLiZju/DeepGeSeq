@@ -1,3 +1,32 @@
+"""
+Model Interpretation and Explanation Module
+
+This module provides tools for interpreting and explaining deep learning model predictions
+on genomic sequences. It implements various interpretation methods including:
+- DeepLIFT/SHAP for attribution calculation
+- TF-MoDISco for motif discovery
+- Seqlet calling for regulatory element identification
+
+Key Features:
+1. Attribution Analysis:
+   - Calculate importance scores for input sequences
+   - Support for multi-task models
+   - Batch processing capabilities
+
+2. Motif Discovery:
+   - Automated motif enrichment analysis
+   - Integration with TF-MoDISco-lite
+   - Result visualization and reporting
+
+3. Sequence Element Analysis:
+   - Seqlet identification and extraction
+   - Motif annotation and scoring
+   - Statistical significance assessment
+
+The module integrates with external tools like TangerMeme for comprehensive
+sequence analysis and visualization.
+"""
+
 from tangermeme.deep_lift_shap import deep_lift_shap
 from tangermeme.seqlet import recursive_seqlets
 from tangermeme.annotate import annotate_seqlets
@@ -14,7 +43,23 @@ logger = logging.getLogger("dgs.explain")
 
 def calculate_shap(model, X, target, device):
     """
-    Calculate SHAP attributions for a given model and input sequences.
+    Calculate SHAP (SHapley Additive exPlanations) attributions for model predictions.
+
+    This function computes importance scores for each position in the input sequences
+    using the DeepLIFT algorithm adapted for SHAP values.
+
+    Args:
+        model (nn.Module): Trained neural network model
+        X (torch.Tensor): Input sequences in one-hot encoded format (N, 4, L)
+        target (int): Target task index for multi-task models
+        device (str): Computation device ('cuda' or 'cpu')
+
+    Returns:
+        np.ndarray: Attribution scores with shape matching input (N, 4, L)
+
+    Note:
+        The function automatically handles device placement and error recovery.
+        In case of computation failure, returns zero attributions.
     """
 
     # Set model to evaluation mode
@@ -34,7 +79,21 @@ def calculate_shap(model, X, target, device):
 
 def calculate_shap_on_ds(model, ds, target, device):
     """
-    Calculate SHAP attributions for a given model and input sequences.
+    Calculate SHAP attributions for an entire dataset.
+
+    This function processes a dataset in batches, handling various input formats
+    and ensuring consistent tensor shapes.
+
+    Args:
+        model (nn.Module): Trained neural network model
+        ds (Dataset): Dataset containing sequences
+        target (int): Target task index for multi-task models
+        device (str): Computation device ('cuda' or 'cpu')
+
+    Returns:
+        tuple: (sequences, attributions)
+            - sequences: Original sequences in one-hot format (N, 4, L)
+            - attributions: SHAP values for each sequence (N, 4, L)
     """
 
     X, X_attr = [], []
@@ -68,17 +127,31 @@ def calculate_shap_on_ds(model, ds, target, device):
 
 def motif_enrich(model, ds, target, output_dir="motif_results", max_seqlets=2000, device=torch.device("cpu")):
     """
-    Perform motif enrichment analysis using TangerMeme and TF-MoDISco-lite
-    
+    Perform comprehensive motif enrichment analysis using model interpretations.
+
+    This function:
+    1. Calculates SHAP attributions for input sequences
+    2. Identifies important sequence patterns
+    3. Runs TF-MoDISco-lite for motif discovery
+    4. Generates visualization reports
+
     Args:
-        model: PyTorch model
-        X: Input sequences tensor (N, 4, L) or (N, L, 4)
-        target: Target task index for multi-task models
-        output_dir: Directory to save results
-        max_seqlets: Maximum number of seqlets per metacluster
-        
+        model (nn.Module): Trained neural network model
+        ds (Dataset): Dataset containing sequences
+        target (int): Target task index for multi-task models
+        output_dir (str): Directory to save analysis results
+        max_seqlets (int): Maximum number of sequence elements to analyze
+        device (str): Computation device ('cuda' or 'cpu')
+
     Returns:
-        str: Path to generated motifs.txt file
+        str: Path to generated motifs file
+
+    Note:
+        Results include:
+        - Sequence attributions (NPZ format)
+        - Discovered motifs (MEME format)
+        - Visualization reports (HTML/PDF)
+        - Raw data for further analysis
     """
     
     # Create output directory if it doesn't exist
@@ -114,17 +187,33 @@ def motif_enrich(model, ds, target, output_dir="motif_results", max_seqlets=2000
 
 def Seqlet_Calling(model, ds, target, output_dir="seqlet_results", motif_db=None, device=torch.device("cpu")):
     """
-    Perform seqlet calling and annotation using TangerMeme
-    
+    Identify and annotate regulatory elements (seqlets) in sequences.
+
+    This function performs:
+    1. Attribution calculation for sequences
+    2. Seqlet identification using recursive algorithm
+    3. Motif annotation if database provided
+    4. Statistical significance assessment
+
     Args:
-        model: PyTorch model
-        X: Input sequences tensor (N, 4, L) or (N, L, 4)
-        target: Target task index for multi-task models
-        output_dir: Directory to save results
-        motif_db: Path to MEME format motif database for annotation
-        
+        model (nn.Module): Trained neural network model
+        ds (Dataset): Dataset containing sequences
+        target (int): Target task index for multi-task models
+        output_dir (str): Directory to save results
+        motif_db (str, optional): Path to MEME format motif database
+        device (str): Computation device ('cuda' or 'cpu')
+
     Returns:
-        dict: Dictionary containing seqlets and their annotations
+        DataFrame: Identified seqlets with annotations
+            Columns include:
+            - Sequence coordinates
+            - Importance scores
+            - Motif matches (if database provided)
+            - Statistical significance
+
+    Note:
+        Results are saved in BED format for compatibility with
+        genome browsers and downstream analysis tools.
     """
     
     # Create output directory if it doesn't exist

@@ -1,9 +1,32 @@
-"""Target module for handling genomic target data.
+"""
+Genomic Target Data Management Module
 
-This module provides:
-1. Target class for managing genomic target data
-2. Support for BED and BigWig file formats
-3. Methods for encoding, decoding and calculating statistics
+This module provides a comprehensive framework for handling genomic target data:
+
+Key Components:
+1. Target Data Processing:
+   - Support for BED and BigWig formats
+   - Multi-task data management
+   - Flexible data encoding
+   - Efficient storage
+
+2. Data Analysis Features:
+   - Statistical calculations
+   - Distribution analysis
+   - Quality metrics
+   - Validation tools
+
+3. Integration Capabilities:
+   - Seamless BED/BigWig reading
+   - Interval-based operations
+   - Task configuration management
+   - Format conversion utilities
+
+The module is designed for:
+- Efficient handling of large genomic datasets
+- Support for various genomic data formats
+- Flexible task configuration
+- Robust data validation
 """
 
 import pandas as pd
@@ -18,7 +41,39 @@ from .Interval import Interval, find_overlaps
 logger = logging.getLogger("dgs.target")
 
 class Target:
-    """Class for managing genomic target data."""
+    """Class for managing genomic target data and annotations.
+    
+    This class provides a comprehensive framework for:
+    - Loading and processing genomic annotations
+    - Managing multiple prediction tasks
+    - Computing dataset statistics
+    - Validating data quality
+    
+    Features:
+    - Support for BED and BigWig formats
+    - Multi-task data management
+    - Flexible data encoding
+    - Statistical analysis
+    
+    Attributes:
+        intervals: Base genomic intervals
+        tasks: Task configurations
+        task_info: Task statistics
+        data: Processed target data
+        
+    Example:
+        >>> intervals = pd.read_csv("regions.bed", sep='\t')
+        >>> tasks = [
+        ...     {
+        ...         'file_path': 'peaks.bed',
+        ...         'file_type': 'bed',
+        ...         'task_type': 'binary',
+        ...         'task_name': 'binding'
+        ...     }
+        ... ]
+        >>> target = Target(intervals, tasks)
+        >>> labels = target.get_labels('binding')
+    """
     
     def __init__(
         self,
@@ -44,6 +99,10 @@ class Target:
             chrom_col: Name of chromosome column
             start_col: Name of start position column
             end_col: Name of end position column
+            
+        Note:
+            The class automatically validates input data and
+            computes relevant statistics for each task.
         """
         # Initialize base intervals
         self.intervals = Interval(intervals, chrom_col, start_col, end_col)
@@ -64,10 +123,20 @@ class Target:
             self._load_task(task)
             
     def _load_task(self, task: Dict[str, Union[str, float, int]]) -> None:
-        """Load data for a single task.
+        """Load and process data for a single task.
+        
+        This method:
+        1. Validates task configuration
+        2. Loads data from file
+        3. Processes according to task type
+        4. Computes task statistics
         
         Args:
             task: Task configuration dictionary
+            
+        Note:
+            Automatically handles different file formats and
+            task types appropriately.
         """
         task_name = task['task_name']
         file_type = task['file_type'].lower()
@@ -84,10 +153,20 @@ class Target:
             raise ValueError(f"Unsupported file type: {file_type}")
             
     def _load_from_bed(self, task: Dict[str, Union[str, float, int]]) -> None:
-        """Load data from BED file.
+        """Load and process data from BED file.
+        
+        This method:
+        1. Reads BED file
+        2. Finds overlaps with base intervals
+        3. Creates label array
+        4. Computes statistics
         
         Args:
             task: Task configuration dictionary
+            
+        Note:
+            Handles both binary and categorical labels from
+            BED files.
         """
         task_name = task['task_name']
         target_col = task.get('target_column', 'name')
@@ -129,14 +208,21 @@ class Target:
         })
         
     def _load_from_bigwig(self, task: Dict[str, Union[str, float, int]]) -> None:
-        """Load data from BigWig file.
+        """Load and process data from BigWig file.
+        
+        This method:
+        1. Reads signal values
+        2. Processes according to parameters
+        3. Optionally converts to binary
+        4. Computes statistics
         
         Args:
             task: Task configuration dictionary
             
-        The signal values are stored as 2D array (intervals × bins):
-        - bin_size=1: Each row contains base-level signals
-        - bin_size>1: Each row contains binned signals
+        Note:
+            The signal values are stored as 2D array (intervals × bins):
+            - bin_size=1: Each row contains base-level signals
+            - bin_size>1: Each row contains binned signals
         """
         task_name = task['task_name']
         bin_size = task.get('bin_size', None)
@@ -196,7 +282,11 @@ class Target:
             
         Returns:
             - If task_name is provided: numpy array (1D or 2D)
-            - If task_name is None: numpy arrays
+            - If task_name is None: Dictionary of numpy arrays
+            
+        Note:
+            For multiple tasks, returns a dictionary with task
+            names as keys and label arrays as values.
         """
         if task_name is not None:
             if task_name not in self.data:
@@ -214,6 +304,14 @@ class Target:
         
         Args:
             task_name: Name of task (None for all tasks)
+            
+        Returns:
+            - If task_name is provided: Dictionary of statistics
+            - If task_name is None: Dictionary of dictionaries
+            
+        Note:
+            Statistics include distribution metrics, counts,
+            and task-specific information.
         """
         if task_name is not None:
             if task_name not in self.task_info:
@@ -223,15 +321,25 @@ class Target:
         return self.task_info
         
     def get_intervals(self) -> pd.DataFrame:
-        """Get base intervals."""
+        """Get base intervals used for target data.
+        
+        Returns:
+            DataFrame containing interval information
+        """
         return self.intervals.data
         
     def get_task_info(self) -> pd.DataFrame:
-        """Get task information as a DataFrame.
+        """Get comprehensive task information.
         
         Returns:
-            DataFrame containing task information with tasks as rows
-            and their properties as columns
+            DataFrame containing task information with:
+            - Tasks as rows
+            - Properties as columns
+            - Configuration and statistics combined
+            
+        Note:
+            Useful for analyzing task characteristics and
+            data distributions.
         """
         # Convert task info dictionary to DataFrame
         task_df = pd.DataFrame.from_dict(self.task_info, orient='index')
@@ -250,14 +358,20 @@ def get_class_distribution(
     labels: Union[np.ndarray, pd.Series],
     normalize: bool = True
 ) -> pd.Series:
-    """Get class distribution.
+    """Calculate class distribution in label data.
     
     Args:
-        labels: Input labels
+        labels: Input label array or series
         normalize: Whether to normalize counts
         
     Returns:
-        Series with class distribution
+        Series with class distribution:
+        - Index: Unique classes
+        - Values: Counts or proportions
+        
+    Note:
+        Useful for analyzing class imbalance and
+        distribution characteristics.
     """
     if isinstance(labels, pd.Series):
         labels = labels.values
@@ -271,13 +385,25 @@ def get_class_distribution(
     return dist.sort_index()
     
 def get_imbalance_metrics(labels: Union[np.ndarray, pd.Series]) -> Dict[str, float]:
-    """Calculate class imbalance metrics.
+    """Calculate comprehensive class imbalance metrics.
+    
+    This function computes:
+    - Imbalance ratio
+    - Shannon entropy
+    - Gini coefficient
     
     Args:
-        labels: Input labels
+        labels: Input label array or series
         
     Returns:
-        Dictionary of imbalance metrics
+        Dictionary of imbalance metrics:
+        - imbalance_ratio: Ratio of most to least common
+        - entropy: Shannon entropy of distribution
+        - gini: Gini coefficient of distribution
+        
+    Note:
+        Higher entropy and lower Gini coefficient indicate
+        more balanced distributions.
     """
     dist = get_class_distribution(labels, normalize=True)
     
@@ -294,15 +420,28 @@ def get_rare_label_stats(
     threshold: float = 0.01,
     min_samples: int = 10
 ) -> Dict[str, float]:
-    """Get statistics about rare labels.
+    """Analyze rare classes in label data.
+    
+    This function identifies and analyzes rare classes:
+    - Finds classes below frequency threshold
+    - Computes statistics about rare classes
+    - Provides detailed rare class metrics
     
     Args:
-        labels: Input labels
-        threshold: Frequency threshold for rare labels
-        min_samples: Minimum samples to consider a label rare
+        labels: Input label array or series
+        threshold: Frequency threshold for rare classes
+        min_samples: Minimum samples to consider
         
     Returns:
-        Dictionary of rare label statistics
+        Dictionary of rare label statistics:
+        - Number of rare classes
+        - Proportion of rare classes
+        - Sample counts and frequencies
+        - Distribution metrics
+        
+    Note:
+        Useful for identifying potential data collection
+        or labeling issues.
     """
     dist = get_class_distribution(labels, normalize=True)
     rare_mask = (dist < threshold) & (dist * len(labels) <= min_samples)

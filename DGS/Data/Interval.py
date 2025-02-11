@@ -1,9 +1,38 @@
-"""Interval module for genomic interval operations.
+"""
+Genomic Interval Processing Module
 
-This module provides:
-1. Core interval operations (merge, overlap, distance)
-2. Interval class for genomic interval manipulation
-3. Statistical analysis functions
+This module provides comprehensive tools for manipulating genomic intervals and coordinates:
+
+Key Components:
+1. Core Interval Operations:
+   - Overlap detection and merging
+   - Distance calculations
+   - Coordinate validation
+   - Statistical analysis
+
+2. Interval Classes:
+   - Interval: Basic genomic interval management
+   - NamedInterval: Intervals with unique identifiers
+   - Efficient coordinate operations
+   - Format conversion utilities
+
+3. Analysis Tools:
+   - Overlap statistics
+   - Distance metrics
+   - Distribution analysis
+   - Quality assessment
+
+4. Integration Features:
+   - BED file support
+   - DataFrame compatibility
+   - Batch processing
+   - Memory optimization
+
+The module is designed for:
+- High-performance interval operations
+- Memory-efficient data structures
+- Flexible coordinate handling
+- Integration with genomic pipelines
 """
 
 import pandas as pd
@@ -16,7 +45,6 @@ from ..IO import BedReader
 
 logger = logging.getLogger("dgs.interval")
 
-# Core interval operations
 def find_overlaps(
     query_intervals: pd.DataFrame,
     target_intervals: pd.DataFrame,
@@ -24,7 +52,13 @@ def find_overlaps(
     start_col: str = 'start',
     end_col: str = 'end'
 ) -> pd.DataFrame:
-    """Find overlapping intervals between two sets of intervals.
+    """Find overlapping regions between two sets of genomic intervals.
+    
+    This function:
+    - Processes intervals chromosome by chromosome
+    - Calculates overlap coordinates
+    - Computes overlap lengths
+    - Preserves original interval information
     
     Args:
         query_intervals: Query intervals DataFrame
@@ -34,7 +68,25 @@ def find_overlaps(
         end_col: Name of end position column
         
     Returns:
-        DataFrame with overlapping intervals
+        pd.DataFrame: Overlapping intervals with columns:
+            - Original interval columns
+            - overlap_start: Start of overlap region
+            - overlap_end: End of overlap region
+            - overlap_length: Length of overlap
+            - query_* columns: Original query interval data
+            
+    Example:
+        >>> query = pd.DataFrame({
+        ...     'chrom': ['chr1'], 
+        ...     'start': [100], 
+        ...     'end': [200]
+        ... })
+        >>> target = pd.DataFrame({
+        ...     'chrom': ['chr1'], 
+        ...     'start': [150], 
+        ...     'end': [250]
+        ... })
+        >>> overlaps = find_overlaps(query, target)
     """
     results = []
     
@@ -96,7 +148,13 @@ def merge_intervals(
     start_col: str = 'start',
     end_col: str = 'end'
 ) -> pd.DataFrame:
-    """Merge overlapping or nearby intervals.
+    """Merge overlapping or nearby genomic intervals.
+    
+    This function:
+    - Processes intervals by chromosome
+    - Merges overlapping regions
+    - Handles nearby intervals within min_distance
+    - Preserves chromosome information
     
     Args:
         intervals: Input intervals DataFrame
@@ -106,7 +164,18 @@ def merge_intervals(
         end_col: Name of end position column
         
     Returns:
-        DataFrame with merged intervals
+        pd.DataFrame: Merged intervals with columns:
+            - chrom: Chromosome name
+            - start: Start position
+            - end: End position
+            
+    Example:
+        >>> df = pd.DataFrame({
+        ...     'chrom': ['chr1', 'chr1'],
+        ...     'start': [100, 150],
+        ...     'end': [200, 250]
+        ... })
+        >>> merged = merge_intervals(df, min_distance=10)
     """
     merged_intervals = []
     
@@ -155,7 +224,13 @@ def find_closest(
     start_col: str = 'start',
     end_col: str = 'end'
 ) -> pd.DataFrame:
-    """Find k closest intervals.
+    """Find k closest intervals for each query interval.
+    
+    This function:
+    - Processes intervals by chromosome
+    - Calculates distances between intervals
+    - Finds k nearest neighbors
+    - Optionally filters by maximum distance
     
     Args:
         query_intervals: Query intervals DataFrame
@@ -167,7 +242,23 @@ def find_closest(
         end_col: Name of end position column
         
     Returns:
-        DataFrame with closest intervals and distances
+        pd.DataFrame: Closest intervals with columns:
+            - Original interval columns
+            - distance: Distance to query interval
+            - query_* columns: Original query interval data
+            
+    Example:
+        >>> query = pd.DataFrame({
+        ...     'chrom': ['chr1'],
+        ...     'start': [1000],
+        ...     'end': [2000]
+        ... })
+        >>> target = pd.DataFrame({
+        ...     'chrom': ['chr1'],
+        ...     'start': [2500, 3000],
+        ...     'end': [3500, 4000]
+        ... })
+        >>> closest = find_closest(query, target, k=1)
     """
     results = []
     
@@ -223,7 +314,13 @@ def get_interval_stats(
     start_col: str = 'start',
     end_col: str = 'end'
 ) -> pd.Series:
-    """Calculate interval statistics.
+    """Calculate comprehensive statistics for genomic intervals.
+    
+    This function computes:
+    - Basic count statistics
+    - Length distribution metrics
+    - Chromosome coverage
+    - Interval characteristics
     
     Args:
         intervals: Input intervals DataFrame
@@ -232,7 +329,22 @@ def get_interval_stats(
         end_col: Name of end position column
         
     Returns:
-        Series with interval statistics
+        pd.Series: Statistics including:
+            - total_intervals: Number of intervals
+            - total_bases: Total bases covered
+            - mean_length: Average interval length
+            - median_length: Median interval length
+            - min_length: Minimum interval length
+            - max_length: Maximum interval length
+            - unique_chromosomes: Number of unique chromosomes
+            
+    Example:
+        >>> df = pd.DataFrame({
+        ...     'chrom': ['chr1', 'chr2'],
+        ...     'start': [100, 200],
+        ...     'end': [200, 400]
+        ... })
+        >>> stats = get_interval_stats(df)
     """
     lengths = intervals[end_col] - intervals[start_col]
     return pd.Series({
@@ -246,7 +358,26 @@ def get_interval_stats(
     })
 
 class Interval:
-    """Class for managing genomic intervals."""
+    """Class for managing genomic intervals.
+    
+    This class provides:
+    - Interval validation and processing
+    - Overlap and distance calculations
+    - Statistical analysis
+    - File format conversion
+    
+    Attributes:
+        data: DataFrame containing interval information
+        chrom_col: Name of chromosome column
+        start_col: Name of start position column
+        end_col: Name of end position column
+        stats: Basic interval statistics
+        
+    Example:
+        >>> intervals = Interval("regions.bed")
+        >>> intervals.merge_overlapping()
+        >>> intervals.to_bed("merged.bed")
+    """
     
     def __init__(
         self,
@@ -264,6 +395,10 @@ class Interval:
             start_col: Name of start position column
             end_col: Name of end position column
             **kwargs: Additional arguments for file reading
+            
+        Raises:
+            ValueError: If required columns are missing
+            ValueError: If intervals are invalid
         """
         self.chrom_col = chrom_col
         self.start_col = start_col
@@ -295,7 +430,16 @@ class Interval:
         )
         
     def _validate_columns(self) -> None:
-        """Validate required columns exist and data format."""
+        """Validate required columns and interval format.
+        
+        This function checks:
+        - Required columns exist
+        - Coordinates are valid
+        - Start positions are non-negative
+        
+        Raises:
+            ValueError: If validation fails
+        """
         # Check required columns
         required = [self.chrom_col, self.start_col, self.end_col]
         missing = [col for col in required if col not in self.data.columns]
@@ -318,7 +462,7 @@ class Interval:
         end_col: str = 'end',
         **kwargs
     ) -> 'Interval':
-        """Create Interval from BED file.
+        """Create Interval object from BED file.
         
         Args:
             file_path: Path to BED file
@@ -328,7 +472,10 @@ class Interval:
             **kwargs: Additional arguments for BedReader
             
         Returns:
-            Interval object
+            Interval: New interval object
+            
+        Example:
+            >>> intervals = Interval.from_bed("regions.bed")
         """
         reader = BedReader(file_path)
         data = reader.read(**kwargs)
@@ -350,7 +497,28 @@ class Interval:
         min_overlap: Optional[int] = None,
         **kwargs
     ) -> pd.DataFrame:
-        """Merge with another set of intervals."""
+        """Merge with another set of intervals.
+        
+        This function:
+        - Finds overlapping regions
+        - Applies merge strategy
+        - Handles non-overlapping intervals
+        - Preserves interval attributes
+        
+        Args:
+            other: Other intervals (DataFrame, Interval, or file)
+            how: Merge type ('inner', 'left', 'right', 'outer')
+            min_overlap: Minimum overlap required
+            **kwargs: Additional arguments for file reading
+            
+        Returns:
+            pd.DataFrame: Merged intervals
+            
+        Example:
+            >>> intervals1 = Interval("regions1.bed")
+            >>> intervals2 = Interval("regions2.bed")
+            >>> merged = intervals1.merge_with(intervals2, how='inner')
+        """
         # Get other intervals
         if isinstance(other, Interval):
             other_df = other.data
@@ -400,7 +568,18 @@ class Interval:
             raise ValueError(f"Invalid merge type: {how}")
             
     def merge_overlapping(self, min_distance: int = 0) -> 'Interval':
-        """Merge overlapping or nearby intervals."""
+        """Merge overlapping or nearby intervals.
+        
+        Args:
+            min_distance: Maximum distance between intervals to merge
+            
+        Returns:
+            Interval: New interval object with merged intervals
+            
+        Example:
+            >>> intervals = Interval("regions.bed")
+            >>> merged = intervals.merge_overlapping(min_distance=100)
+        """
         merged = merge_intervals(
             self.data,
             min_distance,
@@ -417,7 +596,21 @@ class Interval:
         max_distance: Optional[int] = None,
         **kwargs
     ) -> pd.DataFrame:
-        """Find k closest intervals."""
+        """Find k closest intervals.
+        
+        Args:
+            other: Other intervals to search
+            k: Number of closest intervals to find
+            max_distance: Maximum distance to consider
+            **kwargs: Additional arguments for file reading
+            
+        Returns:
+            pd.DataFrame: Closest intervals with distances
+            
+        Example:
+            >>> intervals = Interval("regions.bed")
+            >>> closest = intervals.find_closest("other.bed", k=2)
+        """
         # Get other intervals
         if isinstance(other, Interval):
             other_df = other.data
@@ -437,11 +630,24 @@ class Interval:
         )
         
     def get_stats(self) -> pd.Series:
-        """Get interval statistics."""
+        """Get interval statistics.
+        
+        Returns:
+            pd.Series: Comprehensive interval statistics
+        """
         return self.stats
         
     def to_bed(self, output_file: Union[str, Path], **kwargs) -> None:
-        """Save intervals to BED file."""
+        """Save intervals to BED file.
+        
+        Args:
+            output_file: Path to save BED file
+            **kwargs: Additional arguments for DataFrame.to_csv()
+            
+        Example:
+            >>> intervals = Interval("regions.bed")
+            >>> intervals.to_bed("processed.bed")
+        """
         # Map column names back to BED standard if needed
         data = self.data.copy()
         if self.chrom_col != 'chrom':
@@ -460,7 +666,11 @@ class Interval:
         data.to_csv(output_file, sep='\t', index=False, **kwargs)
         
     def copy(self) -> 'Interval':
-        """Create a deep copy."""
+        """Create a deep copy.
+        
+        Returns:
+            Interval: New interval object with copied data
+        """
         return Interval(
             self.data.copy(),
             self.chrom_col,
@@ -480,7 +690,7 @@ class Interval:
             target_intervals: Target intervals DataFrame
             
         Returns:
-            DataFrame with overlapping intervals
+            pd.DataFrame: Overlapping intervals
         """
         return find_overlaps(
             query_intervals,
@@ -491,7 +701,21 @@ class Interval:
         )
 
 class NamedInterval(Interval):
-    """Class for managing genomic intervals with unique identifiers."""
+    """Class for managing genomic intervals with unique identifiers.
+    
+    This class extends Interval with:
+    - Unique name handling
+    - Name validation
+    - Automatic name generation
+    - Name preservation in operations
+    
+    Attributes:
+        name_col: Name of identifier column
+        
+    Example:
+        >>> intervals = NamedInterval("regions.bed", name_col="gene_id")
+        >>> intervals.merge_overlapping(keep_names=True)
+    """
     
     def __init__(
         self,
@@ -558,7 +782,18 @@ class NamedInterval(Interval):
         suffixes: Tuple[str, str] = ('_x', '_y'),
         **kwargs
     ) -> pd.DataFrame:
-        """Merge with another set of intervals."""
+        """Merge with another set of intervals.
+        
+        Args:
+            other: Other intervals to merge with
+            how: Merge type ('inner', 'left', 'right', 'outer')
+            min_overlap: Minimum overlap required
+            suffixes: Suffixes for duplicate column names
+            **kwargs: Additional arguments for file reading
+            
+        Returns:
+            pd.DataFrame: Merged intervals with preserved names
+        """
         merged = super().merge_with(other, how, min_overlap, **kwargs)
         
         # Add name information
@@ -572,7 +807,15 @@ class NamedInterval(Interval):
         return merged
         
     def merge_overlapping(self, min_distance: int = 0, keep_names: bool = True) -> 'NamedInterval':
-        """Merge overlapping or nearby intervals."""
+        """Merge overlapping or nearby intervals.
+        
+        Args:
+            min_distance: Maximum distance between intervals to merge
+            keep_names: Whether to preserve original names
+            
+        Returns:
+            NamedInterval: New interval object with merged intervals
+        """
         merged = super().merge_overlapping(min_distance)
         
         if keep_names:
@@ -596,7 +839,17 @@ class NamedInterval(Interval):
         max_distance: Optional[int] = None,
         **kwargs
     ) -> pd.DataFrame:
-        """Find k closest intervals."""
+        """Find k closest intervals.
+        
+        Args:
+            other: Other intervals to search
+            k: Number of closest intervals to find
+            max_distance: Maximum distance to consider
+            **kwargs: Additional arguments for file reading
+            
+        Returns:
+            pd.DataFrame: Closest intervals with preserved names
+        """
         closest = super().find_closest(other, k, max_distance, **kwargs)
         
         # Add name information
@@ -614,7 +867,11 @@ class NamedInterval(Interval):
         return closest
         
     def copy(self) -> 'NamedInterval':
-        """Create a deep copy."""
+        """Create a deep copy.
+        
+        Returns:
+            NamedInterval: New interval object with copied data
+        """
         return NamedInterval(
             self.data.copy(),
             self.chrom_col,

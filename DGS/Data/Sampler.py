@@ -1,8 +1,29 @@
-"""Sampling and splitting utilities for genomic datasets.
+"""
+Data Sampling and Splitting Module
 
-This module provides:
-1. Dataset splitting strategies (random, chromosome-based)
-2. DataLoader creation utilities
+This module provides comprehensive utilities for sampling and splitting genomic datasets:
+
+Key Features:
+1. Dataset Splitting:
+   - Random splitting with stratification
+   - Chromosome-based splitting for genomic data
+   - Support for train/test and train/val/test splits
+   - Customizable split ratios
+
+2. Sampling Strategies:
+   - Random sampling with seed control
+   - Balanced sampling for imbalanced data
+   - Region-based sampling for genomic intervals
+   - Cross-validation support
+
+3. Data Management:
+   - Interval-based data handling
+   - Index tracking and preservation
+   - Split validation and statistics
+   - Memory-efficient operations
+
+The module ensures reproducible and statistically sound data splitting
+for genomic deep learning applications.
 """
 
 import numpy as np
@@ -16,17 +37,27 @@ def random_split(
     val_size: Optional[float] = None,
     random_state: Optional[int] = None
 ) -> Union[Tuple[Interval, Interval], Tuple[Interval, Interval, Interval]]:
-    """Split dataset randomly.
+    """Split genomic intervals randomly into training and test/validation sets.
+    
+    This function implements a random splitting strategy that:
+    - Preserves interval object properties
+    - Maintains data integrity
+    - Supports reproducible splitting
+    - Handles both binary and three-way splits
     
     Args:
-        dataset: Dataset to split
-        test_size: Proportion of data for test set
-        val_size: Optional proportion for validation set
-        stratify: Whether to use stratified splitting (for labeled data)
-        random_state: Random seed
+        intervals: Interval object containing genomic regions
+        test_size: Proportion of data to use for testing (0.0 to 1.0)
+        val_size: Optional proportion for validation set (0.0 to 1.0)
+        random_state: Random seed for reproducibility
         
     Returns:
-        Split datasets (train, test) or (train, val, test)
+        - If val_size is None: (train_intervals, test_intervals)
+        - If val_size is provided: (train_intervals, val_intervals, test_intervals)
+        
+    Note:
+        The function preserves the original Interval object's properties
+        and metadata while splitting the underlying data.
     """
     # Get intervals for splitting
     intervals = intervals.copy()
@@ -64,15 +95,28 @@ def chromosome_split(
     test_chroms: List[str],
     val_chroms: Optional[List[str]] = None
 ) -> Union[Tuple[Interval, Interval], Tuple[Interval, Interval, Interval]]:
-    """Split dataset by chromosomes.
+    """Split genomic intervals by chromosome for robust model evaluation.
+    
+    This function implements chromosome-based splitting that:
+    - Prevents data leakage between sets
+    - Evaluates model generalization
+    - Supports genomic region isolation
+    - Maintains chromosome integrity
     
     Args:
-        dataset: Dataset to split
-        test_chroms: Chromosomes for test set
-        val_chroms: Optional chromosomes for validation set
+        intervals: Interval object containing genomic regions
+        test_chroms: List of chromosomes to use for testing
+        val_chroms: Optional list of chromosomes for validation
         
     Returns:
-        Split datasets by chromosome
+        - If val_chroms is None: (train_intervals, test_intervals)
+        - If val_chroms is provided: (train_intervals, val_intervals, test_intervals)
+        
+    Note:
+        Chromosome-based splitting is recommended for genomic data to:
+        1. Prevent position-based correlations between sets
+        2. Test model generalization to unseen chromosomes
+        3. Evaluate chromosome-specific effects
     """
     intervals = intervals.copy()
     

@@ -1,19 +1,39 @@
-"""Basic module in DGS.
-This module provides 
+"""Basic modules for deep genomic sequence analysis.
 
-1.  `BasicModule` class - the general abstract class
+This module provides fundamental building blocks and base classes for the DGS framework.
+It includes abstract base classes, basic neural network modules, and utility classes
+that form the foundation for more complex model architectures.
 
-2.  `BasicConv1d` class - Basic Convolutional Module (1d)
+Classes
+-------
+BasicModule
+    Abstract base class with weight initialization and model I/O utilities.
+    Provides methods for parameter initialization and model saving/loading.
 
-3.  `BasicRNNModule` class - Basic RNN(LSTM) Module in batch-first style
+BasicConv1d
+    Basic 1D convolution module with batch normalization, activation, and pooling.
+    Designed for processing genomic sequence data.
 
-4.  `BasicLinearModule`
+BasicRNNModule
+    Basic RNN/LSTM module configured for batch-first processing.
+    Suitable for sequential genomic data analysis.
 
-5.  `BasicPredictor` Module
+BasicLinearModule
+    Linear transformation module with batch normalization and activation.
+    Used for feature transformation and dimensionality reduction.
 
-6.  `BasicLoss` Module
+BasicPredictor
+    Task-specific prediction head supporting various prediction types.
+    Handles binary classification, multi-class classification, and regression.
 
-and supporting methods.
+BasicLoss
+    Task-specific loss functions module.
+    Provides appropriate loss functions for different prediction tasks.
+
+Notes
+-----
+All modules follow a consistent interface and support debug-level logging for
+shape tracking and parameter initialization monitoring.
 """
 
 import random, time, logging
@@ -26,183 +46,251 @@ __all__ = ["BasicModule", "BasicConv1d", "BasicRNNModule", "BasicLinearModule", 
 
 
 class BasicModule(nn.Module):
-    """Basic module class in DGS."""
+    """Abstract base class for all modules in DGS.
 
+    Provides common functionality for weight initialization, model saving/loading,
+    and parameter management. All model classes should inherit from this class
+    to ensure consistent behavior.
+
+    Methods
+    -------
+    initialize_weights()
+        Initialize module parameters using appropriate initialization schemes
+    initialize_weights_from_pretrained(pretrained_net_fname)
+        Load and initialize weights from a pretrained model
+    load(path)
+        Load model weights from a saved file
+    save(fname=None)
+        Save model weights to a file
+    test(input_size)
+        Test the module by running a forward pass with dummy input
+    """
     def __init__(self):
         super(BasicModule,self).__init__()
+        logging.debug("Initializing BasicModule")
 
     def initialize_weights(self):
-        """initialize module parameters.
+        """Initialize module parameters using appropriate schemes.
 
-        Conv module weight will be initialize in xavier_normal_,
-        bias will be initialize in zero_
-
-        Linear module weight will be initialize in xavier_normal_,
-        bias will be initialize in zero_
-
-        BatchNorm module weight will be initialize in constant = 1,
-        bias will be initialize in constant = 0
-
-        LSTM module weight will be initialize in orthogonal_
+        Applies different initialization methods based on layer type:
+        - Conv layers: Xavier normal for weights, zero for bias
+        - Linear layers: Xavier normal for weights, zero for bias
+        - BatchNorm layers: Constant 1 for weights, 0 for bias
+        - LSTM layers: Orthogonal initialization for all weights
         """
         for m in self.modules():
             if isinstance(m, (nn.Conv1d, nn.Conv2d)):
                 nn.init.xavier_normal_(m.weight) 
                 if m.bias is not None:
                     m.bias.data.zero_()
-                logging.debug("init Conv param...")
+                logging.debug("Initialized Conv layer: %s", str(m))
 
             elif isinstance(m, nn.Linear):
                 nn.init.xavier_normal_(m.weight) 
                 if m.bias is not None:
                     m.bias.data.zero_()
-                logging.debug("init Linear param...")
+                logging.debug("Initialized Linear layer: %s", str(m))
 
             elif isinstance(m, (nn.BatchNorm1d, nn.BatchNorm2d)):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
-                logging.debug("init BatchNorm param...")
+                logging.debug("Initialized BatchNorm layer: %s", str(m))
 
             elif isinstance(m, nn.LSTM):
                 nn.init.orthogonal_(m.all_weights[0][0])
                 nn.init.orthogonal_(m.all_weights[0][1])
                 nn.init.orthogonal_(m.all_weights[1][0])
                 nn.init.orthogonal_(m.all_weights[1][1])
-                logging.debug("init LSTM param...")
+                logging.debug("Initialized LSTM layer: %s", str(m))
 
     def initialize_weights_from_pretrained(self, pretrained_net_fname):
-        """initialize module weights from pretrained model
+        """Initialize module weights from a pretrained model.
 
         Parameters
         ----------
         pretrained_net_fname : str
-            the pretrained model file path (e.g. `checkpoint.pth`).
+            Path to the pretrained model file (e.g. 'checkpoint.pth')
         """
+        logging.debug("Loading pretrained weights from: %s", pretrained_net_fname)
         pretrained_dict = torch.load(pretrained_net_fname)
         net_state_dict = self.state_dict()
         pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in net_state_dict}
         net_state_dict.update(pretrained_dict)
         self.load_state_dict(net_state_dict)
-        logging.info("params loaded from: %s" % pretrained_net_fname)
+        logging.info("Successfully loaded pretrained weights from: %s", pretrained_net_fname)
 
     def load(self, path):
-        """load module weights from saved model 
+        """Load module weights from a saved model file.
 
         Parameters
         ----------
         path : str
-            the saved model file path (e.g. `checkpoint.pth`).
+            Path to the saved model file
         """
+        logging.debug("Loading model from: %s", path)
         self.load_state_dict(torch.load(path, map_location=torch.device('cpu')))
+        logging.info("Successfully loaded model from: %s", path)
 
     def save(self, fname=None):
-        """save module weights to file
+        """Save module weights to a file.
 
         Parameters
         ----------
         fname : str, optional
-            Specify the saved model file path.
-            Default is "None". Saved file will be formatted as "model.time.pth".
+            Path to save the model. If None, generates a timestamped filename.
+
+        Returns
+        -------
+        str
+            Path to the saved model file
         """
         if fname is None:
             fname = time.strftime("model" + '%m%d_%H:%M:%S.pth')
+        logging.debug("Saving model to: %s", fname)
         torch.save(self.state_dict(), fname)
+        logging.info("Successfully saved model to: %s", fname)
         return fname
 
-    # TODO (jiaqili, 20220417): test the tensor flow in module forward
     def test(self, input_size):
+        """Test the module with dummy input.
+
+        Parameters
+        ----------
+        input_size : tuple
+            Shape of the input tensor to test with
+
+        Notes
+        -----
+        This method runs a forward pass with zero tensor and logs shapes.
+        """
+        logging.debug("Testing model with input size: %s", str(input_size))
         device = list(self.parameters)[0].device
         x = torch.zeros(input_size).to(device)
-        self.forward(x)
-        logging.info("Test: all the tensor flow shape reported")
+        out = self.forward(x)
+        logging.info("Test complete - Input shape: %s, Output shape: %s", 
+                    str(input_size), str(out.shape))
 
 
 class Flatten(nn.Module):
-    """Flatten Module: flatten the tensor as (batch_size, -1)."""
+    """Flatten module that reshapes input tensor to (batch_size, -1).
+
+    This module is commonly used between convolutional and linear layers
+    to flatten the feature maps into a 1D vector.
+    """
     def forward(self, x):
-        return x.view(x.size(0), -1)
+        """Reshape input tensor.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input tensor of any shape
+
+        Returns
+        -------
+        torch.Tensor
+            Flattened tensor of shape (batch_size, -1)
+        """
+        logging.debug("Flattening tensor of shape: %s", str(x.shape))
+        out = x.view(x.size(0), -1)
+        logging.debug("Flattened tensor shape: %s", str(out.shape))
+        return out
 
 
 class EXP(nn.Module):
-    """Exp Module: calculate the exp of tensor as `x.exp()`"""
+    """Exponential activation module.
+
+    Applies element-wise exponential function to the input tensor.
+    """
     def forward(self, x):
+        """Apply exponential function.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input tensor
+
+        Returns
+        -------
+        torch.Tensor
+            Exponential of input tensor
+        """
+        logging.debug("Computing exp of tensor with shape: %s", str(x.shape))
         return x.exp()
 
 
 class Residual(nn.Module):
+    """Residual connection module.
+
+    Adds the output of a transformation to its input.
+    """
     def __init__(self, fn):
+        """
+        Parameters
+        ----------
+        fn : callable
+            Transformation function to apply
+        """
         super().__init__()
         self.fn = fn
 
     def forward(self, x, **kwargs):
+        """Apply residual connection.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input tensor
+        **kwargs : dict
+            Additional arguments passed to fn
+
+        Returns
+        -------
+        torch.Tensor
+            Sum of input and transformed tensor
+        """
+        logging.debug("Applying residual connection to tensor of shape: %s", str(x.shape))
         return self.fn(x, **kwargs) + x
-        
+
 
 class BasicConv1d(BasicModule):
-    """Basic Convolutional Module (1d) in DGS.
+    """Basic 1D convolutional module for genomic sequence processing.
+
+    Combines convolution, batch normalization, activation, dropout, and pooling
+    in a configurable sequence. Designed for processing genomic sequence data.
 
     Parameters
     ----------
     in_planes : int
         Number of input channels
     out_planes : int
-        Number of output channels produced by the convolution
+        Number of output channels
     kernel_size : int, optional
-        Size of the convolving kernel
+        Size of the convolution kernel (default: 3)
     conv_args : dict, optional
-        Other convolutional args, Default is dict().
-        Will be pass to `torch.nn.Conv1d(**conv_args)`
-        (e.g. `conv_args={'dilation':1}`)
+        Additional arguments for convolution layer
     bn : bool, optional
-        Whether to use BatchNorm1d, Default is True.
+        Whether to use batch normalization (default: True)
     activation : nn.Module, optional
-        Activation Module, Default is nn.ReLU.
+        Activation function to use (default: nn.ReLU)
     activation_args : dict, optional
-        Other activation args, Default is dict().
-        Will be pass to `activation(**activation_args)`
-        (e.g. `activation=nn.LeakyReLU, activation_args={'p':0.2}`)
+        Arguments for activation function
     dropout : bool, optional
-        Whether to use Dropout, Default is True.
+        Whether to use dropout (default: True)
     dropout_args : dict, optional
-        Dropout args, Default is {'p':0.5}.
-        Will be pass to `nn.Dropout(**dropout_args)` if dropout
-        (e.g. `dropout=True, dropout_args={'p':0.5}`)
+        Arguments for dropout layer (default: {'p': 0.5})
     pool : nn.Module, optional
-        Pool Module (1d), Default is nn.AvgPool1d.
+        Pooling layer to use (default: nn.AvgPool1d)
     pool_args : dict, optional
-        Other pool args, Default is {'kernel_size': 3}.
-        Will be pass to `pool(**pool_args)`
-        (e.g. `pool=nn.AvgPool1d, pool_args={'kernel_size': 3}`)
+        Arguments for pooling layer (default: {'kernel_size': 3})
 
-    Attributes
-    ----------
-    in_channels : int
-
-    out_channels : int
-
-    conv : nn.Conv1d
-        The convolutional neural network component of the model.
-    bn : nn.BatchNorm1d
-        The Batch Normalization 
-    activation : nn.Module
-        The activation Module
-    dropout : nn.Dropout
-        The Dropout Module
-    pool : nn.Module
-        The pool Module
-
-    Tensor flows
-    ----------
-    -> conv(x)
-
-    -> bn(x) if bn
-    
-    -> activation(x) if activation
-    
-    -> dropout(x) if dropout
-    
-    -> pool(x) if pool
-
+    Notes
+    -----
+    The module applies operations in the following order:
+    1. Convolution
+    2. Batch Normalization (optional)
+    3. Activation (optional)
+    4. Dropout (optional)
+    5. Pooling (optional)
     """
     def __init__(self, in_planes, out_planes, kernel_size=3, conv_args={}, 
                     bn=True, 
@@ -219,22 +307,61 @@ class BasicConv1d(BasicModule):
         self.pool = pool(**pool_args) if pool else None
 
     def forward(self, x):
+        """Forward pass of the convolutional module.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input tensor of shape (batch_size, in_channels, sequence_length)
+
+        Returns
+        -------
+        torch.Tensor
+            Processed tensor
+        """
+        logging.debug("BasicConv1d input shape: %s", str(x.shape))
+        
         x = self.conv(x)
+        logging.debug("After conv shape: %s", str(x.shape))
+        
         if self.bn is not None:
             x = self.bn(x)
+            logging.debug("After batch norm shape: %s", str(x.shape))
+            
         if self.activation is not None:
             x = self.activation(x)
+            logging.debug("After activation shape: %s", str(x.shape))
+            
         if self.dropout is not None:
             x = self.dropout(x)
+            logging.debug("After dropout shape: %s", str(x.shape))
+            
         if self.pool is not None:
             x = self.pool(x)
-        logging.debug(x.shape)
+            logging.debug("After pooling shape: %s", str(x.shape))
+            
         return x
 
 
 class BasicRNNModule(BasicModule):
-    """
-    Basic RNN(LSTM) Module in batch-first style
+    """Basic RNN/LSTM module for sequential genomic data.
+
+    Implements a bidirectional LSTM layer with batch-first processing,
+    suitable for analyzing sequential patterns in genomic data.
+
+    Parameters
+    ----------
+    LSTM_input_size : int, optional
+        Size of input features (default: 512)
+    LSTM_hidden_size : int, optional
+        Size of hidden state (default: 512)
+    LSTM_hidden_layers : int, optional
+        Number of LSTM layers (default: 2)
+
+    Notes
+    -----
+    - Uses batch_first=True for easier handling of variable length sequences
+    - Implements bidirectional LSTM for capturing both forward and reverse patterns
     """
     def __init__(self, LSTM_input_size=512, LSTM_hidden_size=512, LSTM_hidden_layes=2):
         super().__init__()
@@ -243,68 +370,63 @@ class BasicRNNModule(BasicModule):
             input_size=LSTM_input_size,
             hidden_size=LSTM_hidden_size,
             num_layers=LSTM_hidden_layes,
-            batch_first=True, # batch, seq, feature
+            batch_first=True,  # batch, seq, feature
             bidirectional=True,
         )
+        logging.debug("Initialized LSTM with input_size=%d, hidden_size=%d, num_layers=%d",
+                     LSTM_input_size, LSTM_hidden_size, LSTM_hidden_layes)
+
     def forward(self, input):
+        """Forward pass of the RNN module.
+
+        Parameters
+        ----------
+        input : torch.Tensor
+            Input tensor of shape (batch_size, sequence_length, input_size)
+
+        Returns
+        -------
+        torch.Tensor
+            Output tensor of shape (batch_size, sequence_length, 2*hidden_size)
+        """
+        logging.debug("BasicRNNModule input shape: %s", str(input.shape))
         output, self.rnn_hidden_state = self.rnn(input, None)
-        logging.debug(output.shape)
+        logging.debug("LSTM output shape: %s", str(output.shape))
         return output
 
 
 class BasicLinearModule(BasicModule):
-    """
-    Basic Linear Module in DGS.
+    """Basic linear transformation module.
+
+    Implements a linear layer with optional batch normalization, activation,
+    and dropout. Used for feature transformation and dimensionality reduction.
 
     Parameters
     ----------
     input_size : int
-        Number of input size
+        Size of input features
     output_size : int
-        Number of output size produced by the Linear
+        Size of output features
     bias : bool, optional
-        Bias of the Linear, Default is True.
-        It could be False when use BatchNorm.
+        Whether to include bias in linear layer (default: True)
     bn : bool, optional
-        Whether to use BatchNorm1d, Default is True.
+        Whether to use batch normalization (default: True)
     activation : nn.Module, optional
-        Activation Module, Default is nn.ReLU.
+        Activation function to use (default: nn.ReLU)
     activation_args : dict, optional
-        Other activation args, Default is dict().
-        Will be pass to `activation(**activation_args)`
-        (e.g. `activation=nn.LeakyReLU, activation_args={'p':0.2}`)
+        Arguments for activation function
     dropout : bool, optional
-        Whether to use Dropout, Default is True.
+        Whether to use dropout (default: True)
     dropout_args : dict, optional
-        Dropout args, Default is {'p':0.5}.
-        Will be pass to `nn.Dropout(**dropout_args)` if dropout
-        (e.g. `dropout=True, dropout_args={'p':0.5}`)
+        Arguments for dropout layer (default: {'p': 0.5})
 
-    Attributes
-    ----------
-    input_size : int
-
-    output_size : int
-
-    linear : nn.Linear
-        The Linear neural network component
-    bn : nn.BatchNorm1d
-        The Batch Normalization 
-    activation : nn.Module
-        The activation Module
-    dropout : nn.Dropout
-        The Dropout Module
-
-    Tensor flows
-    ----------
-    -> linear(x)
-
-    -> bn(x) if bn
-    
-    -> activation(x) if activation
-    
-    -> dropout(x) if dropout
-
+    Notes
+    -----
+    The module applies operations in the following order:
+    1. Linear transformation
+    2. Batch Normalization (optional)
+    3. Activation (optional)
+    4. Dropout (optional)
     """
     def __init__(self, input_size, output_size, bias=True, bn=True, 
                     activation=nn.ReLU, activation_args={}, 
@@ -318,77 +440,103 @@ class BasicLinearModule(BasicModule):
         self.dropout = nn.Dropout(**dropout_args) if dropout else None
 
     def forward(self, x):
+        """Forward pass of the linear module.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input tensor of shape (batch_size, input_size)
+
+        Returns
+        -------
+        torch.Tensor
+            Transformed tensor of shape (batch_size, output_size)
+        """
+        logging.debug("BasicLinearModule input shape: %s", str(x.shape))
+        
         x = self.linear(x)
+        logging.debug("After linear shape: %s", str(x.shape))
+        
         if self.bn is not None:
             x = self.bn(x)
+            logging.debug("After batch norm shape: %s", str(x.shape))
+            
         if self.activation is not None:
             x = self.activation(x)
+            logging.debug("After activation shape: %s", str(x.shape))
+            
         if self.dropout is not None:
             x = self.dropout(x)
-        logging.debug(x.shape)
+            logging.debug("After dropout shape: %s", str(x.shape))
+            
         return x
 
 
 class BasicPredictor(BasicModule):
-    """BasicPredictor Module in DGS.
-    
-    BasicPredictor support task types of 'none', 'binary_classification', 'classification', 'regression';
-    1. 'none' : nullify the whole BaiscPredictor with identity
-    2. 'binary_classification' : activate with Sigmoid
-    3. 'classification' : activate with Softmax(dim=1)
-    4. 'regression' : Identity
+    """Task-specific prediction head module.
+
+    Implements different types of prediction heads for various tasks:
+    - Binary classification (sigmoid activation)
+    - Multi-class classification (softmax activation)
+    - Regression (identity activation)
 
     Parameters
     ----------
     input_size : int
-        Number of input size
+        Size of input features
     output_size : int
-        Number of output size (task numbers)
+        Number of output predictions
     tasktype : str, optional
-        Specify the task type, Default is "binary_classification".
-        (e.g. `tasktype="regression"`)
+        Type of prediction task (default: 'binary_classification')
+        Options: ['none', 'binary_classification', 'classification', 'regression']
 
-    Attributes
-    ----------
-    supported_tasks : currently supported task types
-    tasktype : task type of Predictor
-    input_size : int
-    Map : nn.Linear
-        The Linear Module Mapping input to output.
-    Pred: nn.Module
-        The Activation Module in specified task type.
-
-    Tensor flow
-    ----------
-    -> Map(x)
-
-    -> Pred(x)
-
+    Notes
+    -----
+    The predictor can be switched between different task types during training
+    using the switch_task method.
     """
     def __init__(self, input_size, output_size, tasktype='binary_classification'):
         super().__init__()
         self.supported_tasks = ['none', 'binary_classification', 'classification', 'regression']
+        logging.debug("Initializing BasicPredictor for task type: %s", tasktype)
 
         self.input_size = input_size
         self.tasktype = tasktype
         
         self.Map = nn.Linear(input_size, output_size, bias=True)
-        self.switch_task(tasktype) # init self.Map
+        self.switch_task(tasktype)
 
     def forward(self, x):
-        return self.Pred(self.Map(x))
+        """Forward pass of the predictor.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input tensor of shape (batch_size, input_size)
+
+        Returns
+        -------
+        torch.Tensor
+            Predictions of shape (batch_size, output_size)
+        """
+        logging.debug("BasicPredictor input shape: %s", str(x.shape))
+        mapped = self.Map(x)
+        logging.debug("After mapping shape: %s", str(mapped.shape))
+        out = self.Pred(mapped)
+        logging.debug("Prediction output shape: %s", str(out.shape))
+        return out
 
     def switch_task(self, tasktype):
-        """switch to specified task type
+        """Switch the predictor to a different task type.
 
         Parameters
         ----------
         tasktype : str
-            Specify the task type (e.g. `tasktype="regression"`)
+            New task type to switch to
         """
-
         msg = 'tasktype: %s not supported, check the document' % tasktype
         assert tasktype in self.supported_tasks, msg
+        logging.debug("Switching task type to: %s", tasktype)
 
         if tasktype == 'none':
             self.Map = nn.Sequential()
@@ -401,72 +549,85 @@ class BasicPredictor(BasicModule):
             self.Pred = nn.Sequential()
 
         self.tasktype = tasktype
-    
-    # TODO
-    # def finetune(self, output_size, tasktype='binary_classification'):
-    #     self.Map = nn.Linear(input_size, output_size, bias=True)
-    #     self.Pred = nn.Sequential()
-
-    #     self.tasktype = tasktype
-    #     self.switch_task(tasktype)
+        logging.info("Successfully switched to task type: %s", tasktype)
 
     def current_task(self):
-        """return current task type"""
+        """Get the current task type.
+
+        Returns
+        -------
+        str
+            Current task type
+        """
         return self.tasktype
 
     def remove(self):
-        """Predictor.remove: replace predictor with null Sequential,
-        same as switch_task('none')
-        """
+        """Remove the predictor by switching to 'none' task type."""
+        logging.debug("Removing predictor functionality")
         self.switch_task('none')
 
 
 class BasicLoss(nn.Module):
-    """BasicLoss Module in DGS.
-    
-    BasicLoss support task types of 'binary_classification', 'classification', 'regression';
-    1. 'binary_classification' : BCELoss function
-    2. 'classification' : CrossEntropyLoss function
-    3. 'regression' : MSELoss function
+    """Task-specific loss function module.
+
+    Provides appropriate loss functions for different prediction tasks:
+    - Binary classification: BCELoss
+    - Multi-class classification: CrossEntropyLoss
+    - Regression: MSELoss
 
     Parameters
     ----------
     tasktype : str, optional
-        Specify the task type, Default is "binary_classification".
-        (e.g. `tasktype="regression"`)
+        Type of prediction task (default: 'binary_classification')
     reduction : str, optional
-        Specifies the reduction to apply to the output: `'none'` | `'mean'` | `'sum'`.
+        Reduction method for the loss (default: 'mean')
+        Options: ['none', 'mean', 'sum']
 
-    Attributes
-    ----------
-    supported_tasks : currently supported task types
-    tasktype : task type of Predictor
-    loss : loss function
-
+    Notes
+    -----
+    The loss function can be switched between different task types during
+    training using the switch_task method.
     """
     def __init__(self, tasktype='binary_classification', reduction='mean'):
         super().__init__()
         self.supported_tasks = ['binary_classification', 'classification', 'regression']
+        logging.debug("Initializing BasicLoss for task type: %s", tasktype)
 
         self.tasktype = tasktype
         self.reduction = reduction
 
-        self.switch_task(tasktype) # init self.loss
+        self.switch_task(tasktype)
 
     def forward(self, pred, target):
+        """Compute the loss.
+
+        Parameters
+        ----------
+        pred : torch.Tensor
+            Model predictions
+        target : torch.Tensor
+            Ground truth targets
+
+        Returns
+        -------
+        torch.Tensor
+            Computed loss value
+        """
+        logging.debug("Computing loss for shapes - pred: %s, target: %s",
+                     str(pred.shape), str(target.shape))
         return self.loss(pred, target)
 
     def switch_task(self, tasktype):
-        """switch to specified task type
+        """Switch to a different loss function.
 
         Parameters
         ----------
         tasktype : str
-            Specify the task type (e.g. `tasktype="regression"`)
+            New task type to switch to
         """
-
         msg = 'tasktype: %s not supported, check the document' % tasktype
         assert tasktype in self.supported_tasks, msg
+        logging.debug("Switching loss function to: %s", tasktype)
 
         if tasktype == 'classification':
             self.loss = nn.CrossEntropyLoss(reduction=self.reduction)
@@ -476,3 +637,4 @@ class BasicLoss(nn.Module):
             self.loss = nn.MSELoss(reduction=self.reduction)
 
         self.tasktype = tasktype
+        logging.info("Successfully switched to loss function for: %s", tasktype)

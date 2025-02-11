@@ -1,4 +1,41 @@
-"""Evaluate Metrics provided in DGS."""
+"""
+Model Evaluation and Metrics Module
+
+This module provides comprehensive evaluation tools for assessing model performance
+on genomic sequence analysis tasks. It supports both classification and regression
+metrics for various prediction scenarios.
+
+Key Components:
+1. Classification Metrics:
+   - Binary and multi-class classification
+   - ROC curves and AUC calculation
+   - Precision-recall analysis
+   - F1 score and accuracy metrics
+
+2. Regression Metrics:
+   - Mean squared error (MSE)
+   - Root mean squared error (RMSE)
+   - Mean absolute error (MAE)
+   - R-squared and correlation coefficients
+
+3. Sequence-Level Metrics:
+   - Position-wise performance analysis
+   - Sequence-averaged metrics
+   - Masked evaluation support
+   - Per-sample statistics
+
+4. Visualization Tools:
+   - ROC curve plotting
+   - Precision-recall curve visualization
+   - Performance comparison plots
+   - Metric distribution analysis
+
+The module is designed to handle various prediction formats:
+- Single-task and multi-task models
+- Binary and multi-class classification
+- Continuous value regression
+- Sequence-to-sequence prediction
+"""
 
 import os
 import logging
@@ -18,12 +55,34 @@ from scipy.stats import pearsonr, spearmanr, kendalltau
 logger = logging.getLogger("dgs.evaluator")
 
 def onehot_encode(label: np.ndarray) -> np.ndarray:
-    """Convert integer labels to one-hot encoded format."""
+    """
+    Convert integer labels to one-hot encoded format.
+
+    Args:
+        label (np.ndarray): Integer labels array
+
+    Returns:
+        np.ndarray: One-hot encoded labels
+            Shape: (n_samples, n_classes)
+
+    Note:
+        Automatically determines number of classes from input data.
+    """
     from sklearn.preprocessing import label_binarize
     return label_binarize(label, classes=range(np.max(label)+1))
 
 def metrics_to_df(metrics: Dict) -> pd.DataFrame:
-    """Convert metrics dictionary to DataFrame."""
+    """
+    Convert metrics dictionary to DataFrame format.
+
+    Args:
+        metrics (Dict): Dictionary of metric names and values
+
+    Returns:
+        pd.DataFrame: Metrics in tabular format
+            Index: Metric names
+            Values: Metric scores
+    """
     return pd.DataFrame(metrics).T
 
 def calculate_classification_metrics(
@@ -32,15 +91,36 @@ def calculate_classification_metrics(
     threshold: float = 0.5,
     return_dict: bool = False
 ) -> Union[pd.DataFrame, Dict]:
-    """Calculate classification metrics.
-    
+    """
+    Calculate comprehensive classification performance metrics.
+
+    This function computes various metrics for both binary and
+    multi-class classification tasks:
+    - ROC AUC score
+    - Precision-Recall AUC
+    - F1 score
+    - Accuracy
+    - Per-class metrics for multi-class problems
+
     Args:
-        y_true: Ground truth labels
-        y_pred: Predicted probabilities
-        return_dict: Whether to return dictionary instead of DataFrame
-        
+        y_true (np.ndarray): Ground truth labels
+        y_pred (np.ndarray): Model predictions (probabilities)
+        threshold (float): Classification threshold for binary tasks
+        return_dict (bool): Whether to return dictionary instead of DataFrame
+
     Returns:
-        DataFrame or Dictionary containing classification metrics
+        Union[pd.DataFrame, Dict]: Classification metrics
+            For binary classification:
+                - auroc: Area under ROC curve
+                - auprc: Area under precision-recall curve
+                - f1: F1 score
+                - accuracy: Classification accuracy
+            For multi-class:
+                - Per-class metrics in separate rows/keys
+
+    Note:
+        Automatically handles both binary and multi-class cases.
+        For multi-class, computes metrics for each class separately.
     """
     # infer if this is a multiclass problem
     multi_class = len(y_pred.shape) > 1
@@ -90,15 +170,37 @@ def calculate_regression_metrics(
     y_pred: np.ndarray,
     return_dict: bool = False
 ) -> Union[pd.DataFrame, Dict]:
-    """Calculate regression metrics.
-    
+    """
+    Calculate comprehensive regression performance metrics.
+
+    This function computes various regression metrics:
+    - Mean squared error (MSE)
+    - Root mean squared error (RMSE)
+    - Mean absolute error (MAE)
+    - R-squared score
+    - Correlation coefficients (Pearson, Spearman, Kendall)
+
     Args:
-        y_true: Ground truth values
-        y_pred: Predicted values
-        return_dict: Whether to return dictionary instead of DataFrame
-        
+        y_true (np.ndarray): Ground truth values
+        y_pred (np.ndarray): Model predictions
+        return_dict (bool): Whether to return dictionary instead of DataFrame
+
     Returns:
-        DataFrame or Dictionary containing regression metrics
+        Union[pd.DataFrame, Dict]: Regression metrics
+            - mse: Mean squared error
+            - rmse: Root mean squared error
+            - mae: Mean absolute error
+            - r2: R-squared score
+            - pearson_r: Pearson correlation coefficient
+            - pearson_p: Pearson p-value
+            - spearman_r: Spearman correlation coefficient
+            - spearman_p: Spearman p-value
+            - kendall_tau: Kendall's tau
+            - kendall_p: Kendall's p-value
+
+    Note:
+        Handles both single-task and multi-task regression.
+        For multi-task, computes metrics for each task separately.
     """
     # infer if this is a multiclass problem
     multi_class = len(y_pred.shape) > 1
@@ -156,15 +258,30 @@ def calculate_sequence_classification_metrics(
     mask: Optional[np.ndarray] = None,
     return_dict: bool = False
 ) -> Union[pd.DataFrame, Dict]:
-    """Calculate sequence classification metrics.
-    
+    """
+    Calculate classification metrics for sequence prediction tasks.
+
+    This function handles sequence-to-sequence classification:
+    - Computes metrics at each sequence position
+    - Supports masked evaluation
+    - Provides both per-sample and aggregate metrics
+    - Handles multi-class sequence labeling
+
     Args:
-        y_true: Ground truth sequences, shape (n_samples, seq_len, n_classes)
-        y_pred: Predicted probabilities, shape (n_samples, seq_len, n_classes)
-        mask: Optional mask for valid positions, shape (n_samples, seq_len)
-        
+        y_true (np.ndarray): Ground truth sequences (n_samples, seq_len, n_classes)
+        y_pred (np.ndarray): Predicted probabilities (n_samples, seq_len, n_classes)
+        threshold (float): Classification threshold
+        mask (np.ndarray, optional): Mask for valid positions
+        return_dict (bool): Whether to return dictionary instead of DataFrame
+
     Returns:
-        Dictionary containing sequence-level metrics
+        Union[pd.DataFrame, Dict]: Two sets of metrics:
+            1. Aggregate metrics across all positions
+            2. Per-sample metrics for detailed analysis
+
+    Note:
+        Mask can be used to exclude padding or uncertain positions
+        from evaluation.
     """
     n_samples, seq_len, n_classes = y_true.shape
 
@@ -204,15 +321,29 @@ def calculate_sequence_regression_metrics(
     mask: Optional[np.ndarray] = None,
     return_dict: bool = False
 ) -> Union[pd.DataFrame, Dict]:
-    """Calculate sequence regression metrics.
-    
+    """
+    Calculate regression metrics for sequence prediction tasks.
+
+    This function handles sequence-to-sequence regression:
+    - Computes metrics at each sequence position
+    - Supports masked evaluation
+    - Provides both per-sample and aggregate metrics
+    - Handles multi-task sequence prediction
+
     Args:
-        y_true: Ground truth sequences, shape (n_samples, seq_len, n_classes)
-        y_pred: Predicted values, shape (n_samples, seq_len, n_classes)
-        mask: Optional mask for valid positions, shape (n_samples, seq_len)
-        
+        y_true (np.ndarray): Ground truth sequences (n_samples, seq_len, n_tasks)
+        y_pred (np.ndarray): Predicted values (n_samples, seq_len, n_tasks)
+        mask (np.ndarray, optional): Mask for valid positions
+        return_dict (bool): Whether to return dictionary instead of DataFrame
+
     Returns:
-        Dictionary containing sequence-level metrics
+        Union[pd.DataFrame, Dict]: Two sets of metrics:
+            1. Aggregate metrics across all positions
+            2. Per-sample metrics for detailed analysis
+
+    Note:
+        Mask can be used to exclude padding or uncertain positions
+        from evaluation.
     """
     n_samples, seq_len, n_classes = y_true.shape
 
@@ -254,6 +385,30 @@ def show_auc_curve(metrics,
                     fig_title="Feature ROC curves",
                     lw=1, label=True,
                     dpi=500):
+    """
+    Plot ROC curves for classification results.
+
+    This function visualizes ROC curves:
+    - Supports multiple tasks/classes
+    - Customizable plot appearance
+    - Optional saving to file
+    - Automatic figure management
+
+    Args:
+        metrics (Dict): Dictionary containing ROC curve data
+        fig_size (tuple): Figure size (width, height)
+        save (bool): Whether to save plot to file
+        output_dir (str): Directory for saving plots
+        output_fname (str): Filename for saved plot
+        fig_title (str): Plot title
+        lw (float): Line width
+        label (bool): Whether to show labels
+        dpi (int): Resolution for saved plot
+
+    Note:
+        Creates a new figure for each call and closes it
+        after saving to prevent memory leaks.
+    """
     import matplotlib
     backend = matplotlib.get_backend()
     if "inline" not in backend:
@@ -295,6 +450,30 @@ def show_pr_curve(metrics,
                     fig_title="Feature PR curves",
                     lw=1, label=True,
                     dpi=500):
+    """
+    Plot precision-recall curves for classification results.
+
+    This function visualizes precision-recall curves:
+    - Supports multiple tasks/classes
+    - Customizable plot appearance
+    - Optional saving to file
+    - Automatic figure management
+
+    Args:
+        metrics (Dict): Dictionary containing PR curve data
+        fig_size (tuple): Figure size (width, height)
+        save (bool): Whether to save plot to file
+        output_dir (str): Directory for saving plots
+        output_fname (str): Filename for saved plot
+        fig_title (str): Plot title
+        lw (float): Line width
+        label (bool): Whether to show labels
+        dpi (int): Resolution for saved plot
+
+    Note:
+        Creates a new figure for each call and closes it
+        after saving to prevent memory leaks.
+    """
     import matplotlib
     backend = matplotlib.get_backend()
     if "inline" not in backend:

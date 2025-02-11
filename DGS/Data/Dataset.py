@@ -1,9 +1,32 @@
-"""Dataset module for genomic data processing.
+"""
+Genomic Dataset Module
 
-This module provides:
-1. Base dataset classes for genomic data
-2. Data loading and preprocessing utilities
-3. Common genomic data formats support
+This module implements PyTorch dataset classes for genomic sequence analysis:
+
+Key Components:
+1. Base Dataset Classes:
+   - SeqDataset: Basic sequence dataset
+   - GenomicDataset: Multi-task genomic dataset
+   - Custom dataset implementations
+
+2. Data Processing Features:
+   - Efficient sequence extraction
+   - Automatic one-hot encoding
+   - Strand-aware processing
+   - Batch generation
+
+3. Integration Support:
+   - PyTorch DataLoader compatibility
+   - Multi-task learning frameworks
+   - Custom data augmentation
+   - Memory-efficient operations
+
+The module provides a flexible foundation for building genomic
+deep learning pipelines with focus on:
+- Scalability for large datasets
+- Memory efficiency
+- Processing speed
+- Research reproducibility
 """
 
 import numpy as np
@@ -25,15 +48,33 @@ from .Target import Target
 
 logger = logging.getLogger("dgs.dataset")
 
-# Dataset Classes
 class SeqDataset(Dataset):
-    """Dataset for genomic sequences extracted based on intervals."""
+    """Dataset class for genomic sequence data.
+    
+    This class provides:
+    - Efficient sequence extraction from genome
+    - Automatic one-hot encoding
+    - Strand-aware processing
+    - Memory-efficient operations
+    
+    Attributes:
+        intervals: Genomic intervals for sequence extraction
+        genome: Reference genome object
+        strand_aware: Whether to respect strand information
+        seqs: Cached sequence objects
+        
+    Example:
+        >>> genome = Genome("hg38.fa")
+        >>> intervals = Interval("regions.bed")
+        >>> dataset = SeqDataset(intervals, genome)
+        >>> seq = dataset[0]  # Get first sequence
+    """
     
     def __init__(self, intervals: Interval, genome: Genome, strand_aware: bool = True):
-        """Initialize SeqDataset.
+        """Initialize sequence dataset.
         
         Args:
-            intervals: Interval object with intervals (chrom, start, end, strand)
+            intervals: Interval object with genomic regions
             genome: Genome object for sequence extraction
             strand_aware: Whether to respect strand information
         """
@@ -43,27 +84,62 @@ class SeqDataset(Dataset):
         self.seqs = self._extract_sequences()
         
     def _extract_sequences(self) -> List[DNASeq]:
-        """Extract sequences from genome based on intervals."""
+        """Extract DNA sequences from genome.
+        
+        Returns:
+            List of DNASeq objects corresponding to intervals
+            
+        Note:
+            This method caches sequences to avoid repeated
+            genome access operations.
+        """
         return self.genome.extract_sequences(self.intervals.data, strand_aware=self.strand_aware)
         
     def __len__(self) -> int:
-        """Return the number of sequences."""
+        """Return the number of sequences in dataset."""
         return len(self.seqs)
         
     def __getitem__(self, idx: int) -> np.ndarray:
-        """Return a sequence by index, encoded as one-hot."""
+        """Get one-hot encoded sequence by index.
+        
+        Args:
+            idx: Index of sequence to retrieve
+            
+        Returns:
+            One-hot encoded sequence as numpy array
+            Shape: (sequence_length, 4)
+        """
         seq = self.seqs[idx]
         return one_hot_encode(seq.sequence)
 
 class GenomicDataset(SeqDataset):
-    """Dataset for genomic intervals with labels.
+    """Dataset class for genomic sequences with associated labels.
+    
+    This class extends SeqDataset with:
+    - Multi-task label support
+    - Flexible data loading
+    - Efficient storage
+    - Comprehensive metadata
     
     Features:
-    - Use Intervals to manage sample position information
-    - Efficient sequence and label storage
-    - Flexible data loading strategy
-    - Support multi-task learning
+    - Use Intervals for position management
+    - Efficient sequence/label storage
+    - Support for multi-task learning
     - Automatic sequence encoding
+    
+    Attributes:
+        intervals: Genomic intervals
+        genome: Reference genome
+        targets: Target data manager
+        labels: Cached label arrays
+        task_info: Task configuration data
+        
+    Example:
+        >>> genome = Genome("hg38.fa")
+        >>> intervals = Interval("regions.bed")
+        >>> targets = Target("labels.bed")
+        >>> dataset = GenomicDataset(intervals, genome, targets)
+        >>> seq, label = dataset[0]  # Get first sequence and labels
     """
     
     def __init__(
@@ -76,10 +152,10 @@ class GenomicDataset(SeqDataset):
         """Initialize genomic dataset.
         
         Args:
-            intervals: Interval object with intervals (chrom, start, end, strand)
-            genome: Genome object for sequence extraction
-            targets: Target object for label extraction
-            strand_aware: Whether to respect strand information
+            intervals: Interval object with regions
+            genome: Genome object for sequences
+            targets: Target object with labels
+            strand_aware: Whether to respect strand
         """
         super().__init__(intervals, genome, strand_aware)
         self.targets = targets
@@ -87,30 +163,49 @@ class GenomicDataset(SeqDataset):
         self.task_info = self.targets.get_task_info()
         
     def __getitem__(self, idx: int) -> Tuple[np.ndarray, np.ndarray]:
-        """Return a sequence and its labels by index."""
+        """Get sequence and labels by index.
+        
+        Args:
+            idx: Index of sample to retrieve
+            
+        Returns:
+            tuple: (sequence, labels)
+                - sequence: One-hot encoded sequence
+                - labels: Associated label array
+        """
         seq = self.seqs[idx]
         label = self.labels[idx]
         return one_hot_encode(seq.sequence), label.astype(np.float32)
 
-# DataLoader Utilities
 def create_dataloader(
     dataset: Union[SeqDataset, GenomicDataset],
     batch_size: Optional[int] = 4,
     shuffle: bool = True,
     **kwargs
 ) -> torch.utils.data.DataLoader:
-    """Create DataLoader for dataset.
+    """Create PyTorch DataLoader for genomic datasets.
+    
+    This function provides:
+    - Efficient batch generation
+    - Optional shuffling
+    - Customizable loading
+    - Memory management
     
     Args:
-        dataset: Input dataset
-        batch_size: Batch size (uses dataset config if None)
-        shuffle: Whether to shuffle data
-        **kwargs: Additional arguments for DataLoader
+        dataset: Input genomic dataset
+        batch_size: Number of samples per batch
+        shuffle: Whether to shuffle samples
+        **kwargs: Additional DataLoader arguments
         
     Returns:
-        DataLoader instance
-    """
+        PyTorch DataLoader configured for the dataset
         
+    Example:
+        >>> dataset = GenomicDataset(intervals, genome, targets)
+        >>> loader = create_dataloader(dataset, batch_size=32)
+        >>> for sequences, labels in loader:
+        ...     # Training loop
+    """
     return torch.utils.data.DataLoader(
         dataset,
         batch_size=batch_size,

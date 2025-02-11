@@ -1,9 +1,34 @@
-"""BigWig file reader module for DGS.
+"""BigWig file reader module for genomic signal data.
 
-Provides:
-1. BigWigReader - Reader for BigWig signal files
-2. Signal aggregation functions
-3. Multi-track support
+This module provides functionality for reading and processing BigWig format files,
+which store continuous signal data across genomic coordinates. It supports random
+access to genomic regions and flexible signal aggregation.
+
+Classes
+-------
+BigWigReader
+    Reader for BigWig signal files with the following features:
+    - Random access to genomic regions
+    - Signal aggregation with multiple functions
+    - Flexible binning options
+    - Multi-track support
+    - Comprehensive error handling
+
+Notes
+-----
+The module requires the pyBigWig package for file access. Signal values can be
+aggregated using various functions (mean, max, min, sum) and can be binned to
+reduce resolution. Missing or invalid regions return appropriate zero/NA values.
+
+Examples
+--------
+>>> reader = BigWigReader("signal.bw")
+>>> intervals = pd.DataFrame({
+...     "chrom": ["chr1", "chr1"],
+...     "start": [1000, 2000],
+...     "end": [1500, 2500]
+... })
+>>> signals = reader.read(intervals, bin_size=10, aggfunc="mean")
 """
 
 import numpy as np
@@ -16,29 +41,59 @@ from . import logger
 class BigWigReader:
     """Reader for BigWig genomic signal files.
     
-    Features:
-    - Single and multi-track reading
-    - Signal aggregation
-    - Flexible binning options
+    Provides functionality for reading and processing signal data from BigWig
+    format files. Supports random access to genomic regions, signal aggregation,
+    and flexible binning options.
+
+    Attributes
+    ----------
+    file_path : Path
+        Path to the BigWig file
+    VALID_EXTENSIONS : list of str
+        List of valid file extensions [".bw", ".bigwig", ".bigWig"]
+
+    Methods
+    -------
+    read(intervals, bin_size=None, aggfunc=None, **kwargs)
+        Read signal values for specified genomic intervals
+    check_file()
+        Validate file path and extension
+    validate_intervals(intervals)
+        Validate genomic interval data format
+
+    Examples
+    --------
+    >>> reader = BigWigReader("signal.bw")
+    >>> signals = reader.read(intervals, bin_size=10, aggfunc="mean")
     """
     
     VALID_EXTENSIONS = [".bw", ".bigwig", ".bigWig"]
     
     def __init__(self, file_path: Union[str, Path]):
-        """Initialize reader.
+        """Initialize BigWig reader.
         
-        Args:
-            file_path: Path to BigWig file
+        Parameters
+        ----------
+        file_path : str or Path
+            Path to BigWig file
             
-        Raises:
-            ValueError: If file is invalid
+        Raises
+        ------
+        ValueError
+            If file path is invalid or file doesn't exist
         """
         self.file_path = Path(file_path)
         if not self.check_file():
-            raise ValueError(f"Invalid file: {self.file_path}")
+            raise ValueError(f"Invalid BigWig file: {self.file_path}")
             
     def check_file(self) -> bool:
-        """Check if file has valid extension and exists."""
+        """Check if file has valid extension and exists.
+        
+        Returns
+        -------
+        bool
+            True if file is valid, False otherwise
+        """
         return (
             self.file_path.suffix in self.VALID_EXTENSIONS
             and self.file_path.exists()
@@ -53,18 +108,35 @@ class BigWigReader:
     ) -> np.ndarray:
         """Read coverage values from BigWig file.
         
-        Args:
-            intervals: DataFrame with genomic intervals
-            bin_size: Number of bases to aggregate
-            aggfunc: Aggregation function ("mean", "max", "min", "sum")
-            **kwargs: Additional arguments
+        Parameters
+        ----------
+        intervals : pd.DataFrame
+            DataFrame with genomic intervals (chrom, start, end)
+        bin_size : int, optional
+            Number of bases to aggregate for binning
+        aggfunc : str or callable, optional
+            Aggregation function ("mean", "max", "min", "sum")
+            or custom function
+        **kwargs : dict
+            Additional arguments passed to pyBigWig
             
-        Returns:
-            Array of shape (intervals, tracks, length) with coverage values
+        Returns
+        -------
+        np.ndarray
+            Array of shape (n_intervals, n_bins) with coverage values
             
-        Raises:
-            IOError: If file reading fails
-            ValueError: If arguments are invalid
+        Raises
+        ------
+        IOError
+            If file reading fails
+        ValueError
+            If arguments are invalid
+            
+        Notes
+        -----
+        - Missing regions return zero values
+        - NaN values are converted to zeros
+        - When binning, the last bin may be smaller
         """
         try:
             import pyBigWig
@@ -112,7 +184,7 @@ class BigWigReader:
                         )
                         signals.append(np.zeros(interval_length))
                         
-            # Stack
+            # Stack and return
             return np.asarray(signals)
             
         except Exception as e:
@@ -125,14 +197,28 @@ class BigWigReader:
     ) -> Optional[Callable]:
         """Get aggregation function.
         
-        Args:
-            func: Function name or callable
+        Parameters
+        ----------
+        func : str or callable, optional
+            Name of aggregation function or callable
             
-        Returns:
-            Aggregation function
+        Returns
+        -------
+        callable or None
+            Aggregation function if specified
             
-        Raises:
-            ValueError: If function name is invalid
+        Raises
+        ------
+        ValueError
+            If function name is invalid
+            
+        Notes
+        -----
+        Supported function names:
+        - "mean": Average value
+        - "max": Maximum value
+        - "min": Minimum value
+        - "sum": Sum of values
         """
         if func is None:
             return None
@@ -156,13 +242,25 @@ class BigWigReader:
         return func_map[func]
 
     def validate_intervals(self, intervals: pd.DataFrame) -> None:
-        """Validate the input genomic intervals data.
+        """Validate genomic intervals data format.
         
-        Args:
-            intervals: DataFrame containing genomic interval information
+        Parameters
+        ----------
+        intervals : pd.DataFrame
+            DataFrame with genomic intervals
             
-        Raises:
-            ValueError: If the data format is invalid
+        Raises
+        ------
+        ValueError
+            If intervals format is invalid
+            
+        Notes
+        -----
+        Validates:
+        - Required columns (chrom, start, end)
+        - Column data types
+        - Coordinate ordering
+        - Non-negative coordinates
         """
         # Check required columns
         required_cols = ['chrom', 'start', 'end']
@@ -178,7 +276,7 @@ class BigWigReader:
         if not np.issubdtype(intervals['end'].dtype, np.number):
             raise ValueError("'end' column must be numeric type")
             
-        # Validate interval validity
+        # Validate interval coordinates
         if (intervals['end'] <= intervals['start']).any():
             raise ValueError("Interval end positions must be greater than start positions")
         if (intervals['start'] < 0).any():

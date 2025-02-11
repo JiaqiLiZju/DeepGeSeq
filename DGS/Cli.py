@@ -1,19 +1,31 @@
 """
-This module provides 
+DGS Command Line Interface Implementation Module
 
-1.  `DgsCLI` class - the client class
+This module implements the core functionality of the DGS (Deep Genomic Sequence Analysis Toolkit)
+command line interface. It provides a comprehensive set of classes and functions for executing
+various genomic analysis tasks.
 
-2.  `execute_dgs_hpo` function - execute Hyper Parameter Optimization in DGS
+Key Components:
 
-3.  `execute_dgs_train` function - execute model training in DGS
+1. DgsCLI Class:
+   - Main client class for executing DGS commands
+   - Handles configuration validation and component initialization
+   - Manages execution flow for all analysis modes
 
-4.  `execute_dgs_evaluate` function - execute model evaluation in DGS
+2. Core Execution Functions:
+   - execute_dgs_train: Model training with customizable parameters
+   - execute_dgs_evaluate: Model evaluation and metrics calculation
+   - execute_dgs_explain: Model interpretation and visualization
+   - execute_dgs_predict: Sequence prediction and variant effect prediction
+   - execute_dgs_hpo: Hyperparameter optimization (planned feature)
 
-5.  `execute_dgs_explain` function - execute model explaination in DGS
+3. Data Preprocessing Functions:
+   - preprocess_data_for_train: Prepare data for model training
+   - preprocess_data_for_evaluate: Prepare data for model evaluation
+   - preprocess_data_for_explain: Prepare data for model interpretation
+   - preprocess_data_for_predict: Prepare data for sequence prediction
 
-6.  `execute_dgs_predict` function - execute model prediction in DGS
-
-and supporting methods. Command line interface for DGS
+Each component is designed to work independently or as part of a complete analysis pipeline.
 """
 
 from typing import Optional, Dict, Any
@@ -38,6 +50,24 @@ def preprocess_data_for_train(genome_path, target_tasks, intervals_path,
                               test_size=0.2, val_size=0.2,
                               test_chroms=["chr8"], val_chroms=["chr7"],
                               strand_aware=True, batch_size=4):
+    """
+    Prepare genomic data for model training by loading and preprocessing sequences and targets.
+
+    Args:
+        genome_path (str): Path to the reference genome file
+        target_tasks (list): List of target tasks to predict
+        intervals_path (str): Path to the genomic intervals file
+        train_test_split (str): Split strategy ('random_split' or 'chromosome_split')
+        test_size (float): Proportion of data for testing (for random_split)
+        val_size (float): Proportion of data for validation (for random_split)
+        test_chroms (list): Chromosomes to use for testing (for chromosome_split)
+        val_chroms (list): Chromosomes to use for validation (for chromosome_split)
+        strand_aware (bool): Whether to consider DNA strand information
+        batch_size (int): Batch size for data loading
+
+    Returns:
+        tuple: (train_loader, val_loader, test_loader) - DataLoader objects for each dataset
+    """
     from .Data.Sequence import Genome
     from .Data.Target import Target
     from .Data.Interval import Interval
@@ -84,6 +114,28 @@ def execute_dgs_train(train_loader, validate_loader,
                        checkpoint_dir="checkpoints", 
                        use_tensorboard=True, tensorboard_dir="tensorboard", 
                        **trainer_args):
+    """
+    Execute model training with the specified parameters and data.
+
+    Args:
+        train_loader (DataLoader): DataLoader for training data
+        validate_loader (DataLoader): DataLoader for validation data
+        model (nn.Module): Neural network model to train
+        optimizer (optim.Optimizer): Optimizer for model training
+        criterion (callable): Loss function
+        device (str): Device to use for training ('cuda' or 'cpu')
+        patience (int): Number of epochs to wait for improvement before early stopping
+        max_epochs (int): Maximum number of training epochs
+        resume (bool): Whether to resume training from a checkpoint
+        resume_model_name (str): Name of the checkpoint file to resume from
+        checkpoint_dir (str): Directory for saving checkpoints
+        use_tensorboard (bool): Whether to use TensorBoard for logging
+        tensorboard_dir (str): Directory for TensorBoard logs
+        **trainer_args: Additional arguments for the Trainer
+
+    Returns:
+        tuple: (model, trainer) - Trained model and trainer instance
+    """
     from .DL.Trainer import Trainer
 
     # initialize trainer
@@ -149,6 +201,19 @@ def preprocess_data_for_evaluate(genome_path, target_task, intervals_path,
     return test_loader
 
 def execute_dgs_evaluate(test_loader, trainer):
+    """
+    Evaluate a trained model and calculate performance metrics.
+
+    Args:
+        test_loader (DataLoader): DataLoader containing test data
+        trainer (Trainer): Trained model trainer instance
+
+    Returns:
+        dict: Dictionary containing evaluation metrics:
+            - For classification: accuracy, precision, recall, F1-score, ROC-AUC
+            - For regression: MSE, MAE, R2 score, correlation
+            - For sequence tasks: position-wise metrics
+    """
     from .DL.Evaluator import calculate_classification_metrics, calculate_regression_metrics
     from .DL.Evaluator import calculate_sequence_classification_metrics, calculate_sequence_regression_metrics
 
@@ -184,6 +249,21 @@ def execute_dgs_evaluate(test_loader, trainer):
 def preprocess_data_for_explain(genome_path, intervals_path,
                                 train_test_split="random_split", test_size=0.2, test_chroms=["chr8"],
                                 strand_aware=True, batch_size=4):
+    """
+    Prepare genomic data for model interpretation and explanation.
+
+    Args:
+        genome_path (str): Path to the reference genome file
+        intervals_path (str): Path to the genomic intervals file
+        train_test_split (str): Split strategy ('random_split' or 'chromosome_split')
+        test_size (float): Proportion of data for testing (for random_split)
+        test_chroms (list): Chromosomes to use for testing (for chromosome_split)
+        strand_aware (bool): Whether to consider DNA strand information
+        batch_size (int): Batch size for data loading
+
+    Returns:
+        DataLoader: DataLoader containing sequences for interpretation
+    """
     from .Data.Sequence import Genome
     from .Data.Interval import Interval
     from .Data.Dataset import SeqDataset
@@ -212,13 +292,58 @@ def preprocess_data_for_explain(genome_path, intervals_path,
 
     return test_loader
 
+def execute_dgs_model_predict(model, test_loader, target, device, output_dir="motif_results", max_seqlets=2000):
+    """
+    Execute model prediction on test sequences.
+
+    Args:
+        model (nn.Module): Trained neural network model
+        test_loader (DataLoader): DataLoader containing test sequences
+        target (str): Target task for prediction
+        device (str): Device to use for prediction ('cuda' or 'cpu')
+        output_dir (str): Directory to save prediction results
+        max_seqlets (int): Maximum number of sequence elements to process
+
+    Note:
+        Results will be saved to the specified output directory
+    """
+    from .DL.Predict import predict
+    predict(model, test_loader, target=target, device=device,
+            output_dir=output_dir, max_seqlets=max_seqlets)
+    logger.info("Model prediction completed")
+
 def execute_dgs_explain(model, test_loader, target, device, output_dir="motif_results", max_seqlets=2000):
+    """
+    Generate model explanations and motif enrichment analysis.
+
+    Args:
+        model (nn.Module): Trained neural network model
+        test_loader (DataLoader): DataLoader containing test sequences
+        target (str): Target task for explanation
+        device (str): Device to use for computation ('cuda' or 'cpu')
+        output_dir (str): Directory to save explanation results
+        max_seqlets (int): Maximum number of sequence elements to analyze
+
+    Note:
+        Motif enrichment results will be saved to the specified output directory
+    """
     from .DL.Explain import motif_enrich
     motif_enrich(model, test_loader.dataset, target=target, device=device,
                  output_dir=output_dir, max_seqlets=max_seqlets)
     logger.info("Motif enrichment completed")
 
 def preprocess_data_for_predict(genome_path, vcf_filename, target_len=1000):
+    """
+    Prepare genomic data for variant effect prediction.
+
+    Args:
+        genome_path (str): Path to the reference genome file
+        vcf_filename (str): Path to the VCF file containing variants
+        target_len (int): Length of sequence context around variants
+
+    Returns:
+        tuple: (VariantDataset, DataFrame) - Dataset for variant prediction and variant information
+    """
     from .Data.Sequence import Genome
     from .DL.Predict import read_vcf
     from .DL.Predict import VariantDataset
@@ -237,8 +362,21 @@ def preprocess_data_for_predict(genome_path, vcf_filename, target_len=1000):
 
     return vds, variant_df
 
-def execute_dgs_predict(model, vds, variant_df, 
-                         metric_func, mean_by_tasks, device):
+def execute_dgs_predict(model, vds, variant_df, metric_func, mean_by_tasks, device):
+    """
+    Execute variant effect prediction.
+
+    Args:
+        model (nn.Module): Trained neural network model
+        vds (VariantDataset): Dataset containing variant sequences
+        variant_df (DataFrame): DataFrame containing variant information
+        metric_func (callable): Function to calculate prediction metrics
+        mean_by_tasks (bool): Whether to average predictions across tasks
+        device (str): Device to use for prediction ('cuda' or 'cpu')
+
+    Returns:
+        DataFrame: Prediction results for each variant
+    """
     from .DL.Predict import vep_centred_on_ds
     
     # calculate P_diff
@@ -257,14 +395,30 @@ def execute_dgs_predict(model, vds, variant_df,
 
 # client class
 class DgsCLI:
-    """DGS command line interface handler."""
+    """
+    Main client class for executing DGS commands.
+
+    This class handles:
+    - Configuration validation and management
+    - Model and component initialization
+    - Execution of different analysis modes (train, evaluate, explain, predict)
+    - Resource management and cleanup
+
+    Attributes:
+        config (dict): Configuration dictionary containing all parameters
+        device (str): Device to use for computation ('cuda' or 'cpu')
+        model (nn.Module): Neural network model instance
+        optimizer (optim.Optimizer): Optimizer for model training
+        criterion (callable): Loss function for training
+    """
     
     def __init__(self, config, device=None):
-        """Initialize CLI handler.
-        
+        """
+        Initialize DgsCLI instance.
+
         Args:
-            config: Configuration dictionary or path to config file
-            device: torch.device object or None
+            config (dict): Configuration dictionary containing all parameters
+            device (str, optional): Device to use for computation. Defaults to None.
         """
         self.logger = logging.getLogger("dgs")
 
@@ -281,7 +435,12 @@ class DgsCLI:
         self._initialize_components()
     
     def _validate_minimal_config(self):
-        """Validate the config."""
+        """
+        Validate the minimal required configuration parameters.
+
+        Raises:
+            ConfigError: If required parameters are missing or invalid
+        """
         if not isinstance(self.config, dict):
             raise ValueError("Config must be a dictionary")
         
@@ -309,7 +468,15 @@ class DgsCLI:
             self.logger.warning("No output_dir specified in config, using default output_dir: %s", self.config["output_dir"])
 
     def _initialize_components(self):
-        """Initialize model and other components from config."""
+        """
+        Initialize all required components based on configuration.
+
+        This includes:
+        - Model architecture
+        - Optimizer
+        - Loss function
+        - Data preprocessing components
+        """
         self.logger.info("Initializing components...")
 
         # Initialize model
@@ -364,10 +531,14 @@ class DgsCLI:
                 raise RuntimeError(f"Failed to initialize trainer: {e}")
     
     def execute(self):
-        """Execute the configured operations.
-        
-        Returns:
-            Dictionary containing results from execution
+        """
+        Execute the requested command based on configuration.
+
+        This method dispatches to the appropriate execution method based on
+        the command specified in the configuration (train, evaluate, explain, predict).
+
+        Raises:
+            ValueError: If an invalid command is specified
         """
     
         # Training mode

@@ -1,19 +1,45 @@
-""" Reimplement of Publicated Model Archiectures applicable in DGS.
-This module provides 
+"""Published deep learning models for genomic sequence analysis.
 
-1. `DeepSEA` - DeepSEA architecture (Zhou & Troyanskaya, 2015).
+This module implements several influential published deep learning architectures
+for genomic sequence analysis. Each model is reimplemented following the original
+paper specifications while maintaining a consistent interface within the DGS framework.
 
-2. `Beluga` - DeepSEA architecture used in Expecto (Zhou & Troyanskaya, 2019).
+Models
+------
+DeepSEA
+    Zhou & Troyanskaya (2015)
+    Predicts chromatin effects of sequence alterations with deep learning.
+    Nature Methods, 12(10), 931-934.
 
-3. `DanQ` - DanQ architecture (Quang & Xie, 2016).
+Beluga
+    Zhou & Troyanskaya (2019)
+    Deep learning sequence-based ab initio prediction of variant effects on 
+    expression and disease risk. Nature Genetics, 51(1), 103-109.
 
-4. `Basset` - Basset architecture (Kelley, 2016).
+DanQ
+    Quang & Xie (2016)
+    DanQ: a hybrid convolutional and recurrent deep neural network for 
+    quantifying the function of DNA sequences. Nucleic Acids Research, 44(11).
 
-5. `BPNet` - BPNet architecture (Schreiber, 2018).
+Basset
+    Kelley et al. (2016)
+    Basset: learning the regulatory code of the accessible genome with 
+    deep convolutional neural networks. Genome Research, 26(7), 990-999.
 
-6. `scBasset` - scBasset architecture (Yuan et al, 2022).
+BPNet
+    Avsec et al. (2021)
+    Base-resolution models of transcription-factor binding reveal soft 
+    motif syntax. Nature Genetics, 53(3), 354-366.
 
-and supporting methods.
+scBasset
+    Yuan et al. (2022)
+    Accurate prediction of chromatin accessibility in single cells via 
+    deep learning. Nature Genetics, 54(7), 1062-1070.
+
+Notes
+-----
+All models expect input sequences in the form of one-hot encoded tensors with 
+shape (batch_size, 4, sequence_length) where 4 represents the nucleotides (A,C,G,T).
 """
 
 import logging
@@ -25,8 +51,37 @@ import torch.nn as nn
 __all__ = ["DeepSEA", "Beluga", "DanQ", "Basset", "BPNet", "scBasset"]
 
 class DeepSEA(nn.Module):
-    """
-    DeepSEA architecture (Zhou & Troyanskaya, 2015).
+    """DeepSEA architecture for predicting chromatin effects.
+
+    Implementation of the DeepSEA model from Zhou & Troyanskaya (2015).
+    The model uses a deep convolutional neural network to learn the regulatory
+    code of DNA sequences and predict chromatin effects.
+
+    Parameters
+    ----------
+    sequence_length : int
+        Length of input DNA sequences
+    n_genomic_features : int
+        Number of chromatin features to predict
+
+    Architecture
+    -----------
+    - Three convolutional layers with max pooling and dropout
+    - Two fully connected layers with ReLU activation
+    - Final sigmoid activation for multi-label prediction
+
+    Notes
+    -----
+    - Input shape: (batch_size, 4, sequence_length)
+    - Output shape: (batch_size, n_genomic_features)
+    - Uses binary cross-entropy loss
+    - Trained with SGD optimizer
+
+    References
+    ----------
+    .. [1] Zhou, J., & Troyanskaya, O. G. (2015). 
+           Predicting effects of noncoding variants with deep learning–based 
+           sequence model. Nature Methods, 12(10), 931-934.
     """
     def __init__(self, sequence_length, n_genomic_features):
         """
@@ -111,8 +166,37 @@ class Lambda(LambdaBase):
         return self.lambda_func(self.forward_prepare(input))
 
 class Beluga(nn.Module):
-    """
-    DeepSEA architecture used in Expecto (Zhou & Troyanskaya, 2019).
+    """Beluga model for variant effect prediction.
+
+    Implementation of the Beluga model from Zhou & Troyanskaya (2019).
+    An extension of DeepSEA with deeper architecture and improved training,
+    used in the Expecto framework for variant effect prediction.
+
+    Parameters
+    ----------
+    sequence_length : int
+        Length of input DNA sequences
+    n_genomic_features : int
+        Number of genomic features to predict
+
+    Architecture
+    -----------
+    - Six convolutional layers with max pooling and dropout
+    - Two fully connected layers
+    - Final sigmoid activation for multi-label prediction
+
+    Notes
+    -----
+    - Input shape: (batch_size, 4, sequence_length)
+    - Output shape: (batch_size, n_genomic_features)
+    - Uses binary cross-entropy loss
+    - Deeper architecture than DeepSEA
+
+    References
+    ----------
+    .. [1] Zhou, J., et al. (2019). Deep learning sequence-based ab initio 
+           prediction of variant effects on expression and disease risk. 
+           Nature Genetics, 51(1), 103-109.
     """
     def __init__(self, sequence_length, n_genomic_features):
         super(Beluga, self).__init__()
@@ -163,8 +247,39 @@ class Beluga(nn.Module):
 
 
 class DanQ(nn.Module):
-    """
-    DanQ architecture (Quang & Xie, 2016).
+    """DanQ hybrid convolutional and recurrent architecture.
+
+    Implementation of the DanQ model from Quang & Xie (2016).
+    Combines convolutional layers for motif detection with bidirectional
+    LSTM for regulatory grammar learning.
+
+    Parameters
+    ----------
+    sequence_length : int
+        Length of input DNA sequences
+    n_genomic_features : int
+        Number of genomic features to predict
+
+    Architecture
+    -----------
+    - Convolutional layer for motif detection
+    - Max pooling and dropout
+    - Bidirectional LSTM for sequence patterns
+    - Two fully connected layers
+    - Final sigmoid activation
+
+    Notes
+    -----
+    - Input shape: (batch_size, 4, sequence_length)
+    - Output shape: (batch_size, n_genomic_features)
+    - Uses binary cross-entropy loss
+    - Trained with RMSprop optimizer
+
+    References
+    ----------
+    .. [1] Quang, D., & Xie, X. (2016). DanQ: a hybrid convolutional and 
+           recurrent deep neural network for quantifying the function of DNA 
+           sequences. Nucleic Acids Research, 44(11).
     """
     def __init__(self, sequence_length, n_genomic_features):
         """
@@ -216,10 +331,39 @@ class DanQ(nn.Module):
 
 
 class Basset(nn.Module):
-    '''Basset architecture (Kelley, 2016).
-    Deep convolutional neural networks for DNA sequence analysis.
-    The architecture and optimization parameters for the DNaseI-seq compendium analyzed in the paper.
-    '''
+    """Basset architecture for DNA sequence analysis.
+
+    Implementation of the Basset model from Kelley et al. (2016).
+    Uses deep convolutional neural networks to learn the regulatory code
+    of DNA sequences and predict chromatin accessibility.
+
+    Parameters
+    ----------
+    sequence_length : int
+        Length of input DNA sequences
+    n_genomic_features : int
+        Number of genomic features to predict
+
+    Architecture
+    -----------
+    - Three convolutional layers with batch normalization
+    - Max pooling after each convolution
+    - Three fully connected layers with dropout
+    - Final sigmoid activation
+
+    Notes
+    -----
+    - Input shape: (batch_size, 4, sequence_length)
+    - Output shape: (batch_size, n_genomic_features)
+    - Uses batch normalization for better training
+    - Incorporates residual connections
+
+    References
+    ----------
+    .. [1] Kelley, D. R., et al. (2016). Basset: learning the regulatory code 
+           of the accessible genome with deep convolutional neural networks. 
+           Genome Research, 26(7), 990-999.
+    """
     def __init__(self, sequence_length, n_genomic_features):
         super(Basset, self).__init__()
 
@@ -258,6 +402,13 @@ class Basset(nn.Module):
         return self.model(x)
     
     def architecture(self):
+        """Get the model's architecture parameters.
+
+        Returns
+        -------
+        dict
+            Dictionary containing the model's architecture parameters
+        """
         d = {'conv_filters1':300,
             'conv_filters2':200,
             'conv_filters3':200,
