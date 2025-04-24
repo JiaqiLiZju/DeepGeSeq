@@ -314,8 +314,8 @@ We welcome contributions! Please see our [contributing guidelines](CONTRIBUTING.
 If you use DeepGeSeq in your research, please cite:
 ```bibtex
 @article{li2024deepgeseq,
-  title={DeepGeSeq: A systematic deep learning toolkit for genomics},
-  author={Li, Jiaqi and Wu, Hanyu and others},
+  title={DeepGeSeq: Deep learning library for Genomic Sequence modeling and analysis},
+  author={Jiaqi Li},
   journal={},
   year={2024}
 }
