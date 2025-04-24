@@ -1,0 +1,86 @@
+cluster	subset_cluster	pipeline_cell_type	manual_cell_type	cell_label
+1	1	Endothelial cells		Endothelial cells
+1	2	Unknown	Unknown	Unknown
+1	3	Endothelial cells		Endothelial cells
+2	1	T cells		T cells
+3	1	Hepatocytes		Hepatocytes
+4	1	B cells		B cells
+4	2	B cells		B cells
+4	3	B cells		B cells
+4	4	B cells		B cells
+5	1	Excitatory neurons		Cortical projection neurons
+5	2	Unknown	Excitatory neurons	Subcortical projection neurons
+5	3	Unknown	Excitatory neurons	Cortical thalamic projection neurons
+5	4	Unknown	Excitatory neurons	Cortical thalamic projection neurons
+5	5	Inhibitory neurons		Inhibitory neurons
+5	6	Unknown	Unknown	Unknown
+6	1	Enterocytes		Enterocytes
+7	1	Cardiomyocytes		Cardiomyocytes
+7	2	Unknown	Unknown	Unknown
+8	1	Excitatory neurons		Cerebellar granule cell
+8	2	Excitatory neurons		Cerebellar granule cell
+9	1	Eosinophils	Unknown	Unknown
+9	2	Endothelial cells		Endocardial endothelial cells
+9	3	Astrocyte	Endothelial cells	Arterial endothelial cells
+10	1	Unknown	Hematopoietic progenitors	Hematopoietic progenitors
+11	1	Proximal tubule		Proximal tubule
+11	2	Proximal tubule		Proximal tubule
+11	3	Proximal tubule		Proximal tubule
+11	4	Proximal tubule		Proximal tubule
+11	5	Proximal tubule		Proximal tubule
+12	1	T cells		T cells
+12	2	T cells		T cells
+12	3	T cells		T cells
+12	4	T cells		T cells
+12	5	T cells		T cells
+13	1	Erythroblast		Erythroblast
+14	1	Sperm		Sperm
+14	2	Sperm		Sperm
+14	3	Sperm		Sperm
+15	1	Inhibitory neurons		Inhibitory neurons
+15	2	Inhibitory neurons		Inhibitory neurons
+15	3	Inhibitory neurons		SOM+ Interneuron
+16	1	B cells		B cells
+16	2	Unknown	Mono/Mac/DC	Macrophages
+16	3	Mono/Mac/DC	Mono/Mac/DC	Microglia
+17	1	Mono/Mac/DC		Dendritic cells
+17	2	Clara (Club cells)	Mono/Mac/DC	Alveolar macrophages
+17	3	Unknown	Mono/Mac/DC	Dendritic cells
+17	4	Endothelial cells	Collisions	Collisions
+17	5	Unknown	Collisions	Collisions
+18	1	Unknown	Mixture	DCT/CD
+18	2	Loop of henle	Loop of henle	Loop of henle
+18	3	Unknown	Loop of henle	Loop of henle
+18	4	Distal tubule	Distal tubule	Distal convoluted tubule
+18	5	Unknown	Collecting duct	Collecting duct
+19	1	Astrocyte		Astrocyte
+19	2	Astrocyte		Astrocyte
+19	3	Astrocyte		Astrocyte
+19	4	Astrocyte		Astrocyte
+20	1	Type I pneumocytes		Type I pneumocytes
+21	1	Oligodendrocyte		Oligodendrocyte
+21	2	Oligodendrocyte		Oligodendrocyte
+22	1	Endothelial cells		Venous endothelial cells
+22	2	Endothelial cells		Glomerular endothelial
+22	3	Unknown	Endothelial cells	Venous endothelial cells
+22	4	Endothelial cells		Venous endothelial cells
+23	1	Endothelial cells		Arterial endothelial cells
+23	2	Unknown	Unknown	Unknown
+24	1	Adipocytes	Mono/Mac/DC	Monocytes
+24	2	Unknown	Mono/Mac/DC	Monocytes
+25	1	Unknown	Podocyte	Podocyte
+25	2	Endothelial cells		Arterial endothelial cells
+25	3	Endothelial cells		Arterial endothelial cells
+26	1	T cells		T cells
+26	2	Astrocyte	Collisions	Collisions
+26	3	Unknown	Collisions	Collisions
+27	1	Inhibitory neurons	Purkinje cells	Purkinje cells
+27	2	Inhibitory neurons	Collisions	Collisions
+27	3	Astrocyte	Collisions	Collisions
+28	1	B cells	Immature B cells	Immature B cells
+28	2	Unknown	Immature B cells	Immature B cells
+29	1	Astrocyte	Subcortical projection neurons	Subcortical projection neurons
+30	1	Type II pneumocytes	Type II pneumocytes	Type II pneumocytes
+30	2	Unknown	Unknown	Unknown
+30	3	Unknown	Collisions	Collisions
+30	4	Unknown	Unknown	Unknown
