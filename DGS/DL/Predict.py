@@ -207,7 +207,7 @@ class VariantDataset(SeqDataset):
         var_alt = self.var_alt[idx]
 
         if self.check_reference(seq_ref.sequence, var_ref):
-            seq_alt = mutate(seq_alt.sequence, var_alt, var_ref)
+            seq_alt = mutate(seq_alt.sequence, var_ref, var_alt)
             seq_alt = DNASeq(seq_alt)
         else:
             variant = self.variants.iloc[idx]
@@ -301,6 +301,8 @@ def metric_predicted_effect(p_ref, p_alt, metric_func='diff', mean_by_tasks=True
         For multi-task models, scores can be averaged or kept separate
         based on mean_by_tasks parameter.
     """
+    allowed_metrics = ('diff', 'ratio', 'log_ratio', 'max', 'min')
+
     if metric_func == 'diff':
         p_eff = p_alt - p_ref
         p_eff = np.abs(p_eff)
@@ -321,7 +323,10 @@ def metric_predicted_effect(p_ref, p_alt, metric_func='diff', mean_by_tasks=True
         p_eff = metric_func(p_ref, p_alt)
 
     else:
-        raise ValueError(f"Invalid metric function: {metric_func}. Must be one of: {allowed_metrics}")
+        raise ValueError(
+            f"Invalid metric function: {metric_func}. "
+            f"Must be one of: {allowed_metrics}, or a callable."
+        )
 
     if mean_by_tasks:
         p_eff = p_eff.mean(axis=1)

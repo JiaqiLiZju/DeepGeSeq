@@ -80,8 +80,20 @@ def create_parser() -> argparse.ArgumentParser:
                       help="GPU device ID (-1 for CPU)")
     parser.add_argument("--seed", type=int, default=42,
                       help="Random seed")
-    parser.add_argument("--benchmark", action="store_true", default=True,
-                      help="Enable PyTorch benchmark mode")
+    benchmark_group = parser.add_mutually_exclusive_group()
+    benchmark_group.add_argument(
+        "--benchmark",
+        dest="benchmark",
+        action="store_true",
+        help="Enable PyTorch benchmark mode"
+    )
+    benchmark_group.add_argument(
+        "--no-benchmark",
+        dest="benchmark",
+        action="store_false",
+        help="Disable PyTorch benchmark mode"
+    )
+    parser.set_defaults(benchmark=True)
     
     # Create minimal subparsers for different commands
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
@@ -139,6 +151,9 @@ def main():
         config["gpu"] = args.gpu
         config["seed"] = args.seed
         config["benchmark"] = args.benchmark
+        if args.command in {"train", "evaluate", "explain", "predict"}:
+            # Single-mode commands should override config modes.
+            config["modes"] = [args.command]
         
         # Setup environment
         device, logger = setup_environment(
