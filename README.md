@@ -1,317 +1,241 @@
-# DeepGeSeq 
+# DeepGeSeq
 
-DeepGeSeq is a systematic and easy-to-use deep learning toolkit for genomics data analysis. It provides comprehensive support for modern deep learning architectures and analysis pipelines in genomics research.
+DeepGeSeq (DGS) is a deep learning toolkit for genomic sequence analysis. It provides end-to-end workflows for training, evaluation, interpretation, and variant effect prediction on sequence-based tasks.
 
-<div align=center><img src="./Figures/DeepGeSeq.png" width="450px"></img></div>
+<div align="center"><img src="./Figures/DeepGeSeq.png" width="450px" alt="DeepGeSeq logo" /></div>
 
-## Key Features
+## What DGS Provides
 
-### 1. Model Architectures
-- **Modern Deep Learning Support**: Residual Networks (ResNet), Attention Mechanisms (CBAM), Transformers, Customizable architectures
-- **Pre-implemented Models**: Re-implementation of published models, Easy model customization, Automatic architecture search
-
-### 2. Training & Evaluation
-- **Flexible Training Pipeline**: GPU acceleration support, Early stopping, Checkpoint management, TensorBoard integration
-- **Comprehensive Evaluation**: Multiple metrics (AUC, PR, F1, etc.), Cross-validation support, Performance visualization
-
-### 3. Model Applications
-- **Motif Analysis**: Motif enrichment analysis, Integration with MEME Suite, HOMER motif search support
-- **Feature Attribution**: Gradient-based attribution, Integrated gradients, DeepLIFT support
-- **Variant Effect Prediction**: VCF file support, Variant impact scoring, Batch prediction
-
-### 4. Data Processing
-- **Multiple Format Support**: FASTA/FASTQ sequences, BED intervals, BigWig signals, VCF variants
-- **Efficient Processing**: Parallel data loading, Memory-efficient processing, Strand-aware analysis
+- Model training and checkpoint management
+- Classification/regression evaluation utilities
+- Model interpretation (DeepLIFT/SHAP-style attribution + motif workflow)
+- Variant effect prediction from VCF
+- Genomics data pipeline support for FASTA/BED/BigWig/VCF
 
 ## Installation
 
 ### Requirements
-- Python ≥ 3.7
-- PyTorch ≥ 1.10.1
-- CUDA support (optional, for GPU acceleration)
 
-### Dependencies
+- Python >= 3.7
+- PyTorch environment (CPU or CUDA)
+
+### Install from source
+
 ```bash
-# Core dependencies
-tqdm
-numpy
-pandas>=0.21
-matplotlib==3.0.*
-h5py==2.10.0
-scikit-learn>=0.21.2
-torch>=1.10.1
-tensorboard>=2.7.0
-```
-
-### Installation Methods
-
-1. **From Source**:
-```bash
-# Clone repository
 git clone https://github.com/JiaqiLiZju/DeepGeSeq.git
-
-# Install
 cd DeepGeSeq
-python setup.py install
+pip install -e .
 ```
 
-2. **Development Installation**:
+### Install with optional extras
+
 ```bash
-# For development and testing
-python setup.py develop
+# explain workflow (Python-side dependency)
+pip install -e ".[explain]"
+
+# hyperparameter tuning
+pip install -e ".[tune]"
+
+# llm / enformer related modules
+pip install -e ".[llm]"
+
+# install all optional extras
+pip install -e ".[all]"
 ```
 
-## Quick Start
+### Optional runtime dependencies for `explain` mode
 
-### 1. Generate Configuration
+`explain` mode depends on additional tools that are not guaranteed by base install:
+
+- `tangermeme` (Python package)
+- `modisco` command line tool (must be available in `PATH`)
+
+If these are missing, explanation/motif commands will fail at runtime.
+
+## Quick Start (CLI)
+
+### 1. Generate a config template
+
 ```bash
-# Generate minimal example config
 dgs config --example minimal --output config.json
-
-# Generate full example config
+# or
 dgs config --example full --output config.json
 ```
 
-### 2. Basic Runing
+### 2. Run full pipeline from config
+
 ```bash
-# Train with default settings
 dgs run --config config.json
 ```
 
-### 3. Model Training, Evaluation, Interpretation, and Prediction
+### 3. Run one mode only
+
 ```bash
-# Train with default settings
-dgs {train, evaluate, explain, predict} --config config.json
-
+dgs train --config config.json
+dgs evaluate --config config.json
+dgs explain --config config.json
+dgs predict --config config.json
 ```
 
-##  Examples
+## Configuration Notes
 
-### Input files
+### Minimal config (recommended to start)
 
-Genome file: `GRCh38.p13.genome.fa.gz`
-
-Intervals file: `random_regions.bed`
-
-BigWig file: `hg38.gc5Base.bw`
-
-VCF file: `test.vcf`
-
-
-### Minimal Configuration
-```python
-minimal_configs = {
-    "modes" : ["train", "evaluate", "explain", "predict"], # define the mode of the run, must be one of the example modes
-    "device": "cuda", # define the device to run the model
-    "output_dir": "Test", # define the output directory
-    "data": { # define the data for the run
-        "genome_path": "Test/reference_grch38p13/GRCh38.p13.genome.fa.gz", # define the genome file
-        "intervals_path": "Test/random_regions.bed", # define the intervals file, each line is a region, and it defines the data samples
-        "target_tasks": [ # define the target tasks for the run
-            {
-                "task_name": "gc_content", # define the task name
-                "file_path": "Test/hg38.gc5Base.bw", # define the file path
-                "file_type": "bigwig", # define the file type, currently support "bigwig" and "bed"
-            }, # define the second task, etc.
-            {
-                "task_name": "recomb",
-                "file_path": "Test/recombAvg.bw",
-                "file_type": "bigwig",                
-            }
-        ]
-    },
-    "train": { # define the training settings
-        "optimizer": { # define the optimizer
-            "type": "Adam", # define the optimizer type
-            "lr": 0.001 # define the learning rate
-        },
-        "criterion": { # define the loss function
-            "type": "MSELoss" # define the loss function type, which should be adjusted according to the task, for example, "BCELoss" for binary classification (0/1), "MSELoss" for regression (continuous values)
-        }
-    },
-    "model": { # define the model
-        "type": "CNN", # define the model type
-        "args":{
-          "output_size": 2, # define the model arguments, which should be adjusted according to the task, for example, "output_size" should be equal to the number of tasks
-          } 
-    },
-    "explain":{"target":0}, # define the target task for explanation, which should be adjusted according to the task, for example, "target":0 for the first task
-    "predict":{"vcf_path":"Test/test.vcf", # define the vcf file path for prediction
-              "sequence_length":1000 # define the sequence length for prediction, which means the length of the sequence to be predicted, it usually should be the same as the sequence length used in model
-              }
-}
-```
-
-### Output files
-
-- `checkpoints/`: Checkpoints for the model parameters
-
-- `Test/metrics/`: Metrics for the model
-
-- `Test/motif_results/`: Motif results for the model
-
-- `Test/predictions/`: Predictions for the model
-
-### Complete Configuration
-```python
-complete_configs = {
-    "modes": ["train", "evaluate", "predict"], # define the mode of the run, must be one of the example modes
-    "device": "cuda", # define the device to run the model
-    "output_dir": "Test", # define the output directory
-    
-    "data": { # define the data for the run
-        "genome_path": "Test/reference_grch38p13/GRCh38.p13.genome.fa.gz", # define the genome file
-        "intervals_path": "Test/random_regions.bed", # define the intervals file, each line is a region, and it defines the data samples
-        "target_tasks": [ # define the target tasks for the run 
-            {
-                "task_name": "gc_content", # define the task name
-                "file_path": "Test/hg38.gc5Base.bw", # define the file path
-                "file_type": "bigwig" # define the file type, currently support "bigwig" and "bed"
-            }, # define the second task, etc.
-            {
-                "task_name": "recomb", # define the task name
-                "file_path": "Test/recombAvg.bw", # define the file path
-                "file_type": "bigwig" # define the file type, currently support "bigwig" and "bed"
-            }
-        ],
-        "train_test_split": "random_split", # define the train-test split method, currently support "random_split" and "chromosome_split"
-        "test_size": 0.2, # define the test size for the run, and it will be used in "random_split" mode
-        "val_size": 0.2, # define the validation size for the run, and it will be used in "random_split" mode
-        "test_chroms": ["chr8"], # define the test chromosomes for the run, it should be a list of chromosomes, for example, ["chr8", "chr9", "chr10"], and it will be used in "chromosome_split" mode
-        "val_chroms": ["chr7"], # define the validation chromosomes for the run, it should be a list of chromosomes, for example, ["chr7", "chr8", "chr9"], and it will be used in "chromosome_split" mode
-        "strand_aware": True, # define whether the data is strand-aware
-        "batch_size": 4 # define the batch size for the run
-    },
-    
-    "model": { # define the model
-        "type": "CNN", # define the model type
-        "args": {"output_size": 2} # define the model arguments, which should be adjusted according to the task, for example, "output_size" should be equal to the number of tasks
-    },
-    
-    "train": { # define the training settings
-        "optimizer": { # define the optimizer
-            "type": "Adam", # define the optimizer type
-            "params": {"lr": 1e-3} # define the optimizer parameters, for example, "lr" is the learning rate
-        },
-        "criterion": { # define the loss function
-            "type": "MSELoss", # define the loss function type, which should be adjusted according to the task, for example, "BCELoss" for binary classification (0/1), "MSELoss" for regression (continuous values)
-            "params": {} # define the loss function parameters, for example, "weight" is the weight for the loss function
-        },
-        "patience": 10, # define the patience for early stopping
-        "max_epochs": 500, # define the maximum epochs for the run
-        "checkpoint_dir": "checkpoints", # define the checkpoint directory
-        "use_tensorboard": False, # define whether to use tensorboard
-        "tensorboard_dir": "tensorboard" # define the tensorboard directory
-    },
-    
-    "explain": { # define the explanation settings
-        "target": 0, # define the target task for explanation, which should be adjusted according to the task, for example, "target":0 for the first task
-        "output_dir": "motif_results", # define the output directory for the explanation
-        "max_seqlets": 2000 # define the maximum number of seqlets for the explanation
-    },
-    
-    "predict": { # define the prediction settings 
-        "vcf_path": "Test/test.vcf", # define the vcf file path for prediction
-        "sequence_length": 1000, # define the sequence length for prediction, which means the length of the sequence to be predicted, it usually should be the same as the sequence length used in model
-        "metric_func": "diff", # define the metric function for prediction, currently support "diff" and "mean"
-        "mean_by_tasks": True # define whether to mean the prediction by tasks, which means to mean the prediction by tasks, for example, "mean_by_tasks":True for the first task
+```json
+{
+  "modes": ["train", "evaluate", "explain", "predict"],
+  "device": "cuda",
+  "output_dir": "Test",
+  "data": {
+    "genome_path": "Test/reference_grch38p13/GRCh38.p13.genome.fa.gz",
+    "intervals_path": "Test/random_regions.bed",
+    "target_tasks": [
+      {
+        "task_name": "gc_content",
+        "file_path": "Test/hg38.gc5Base.bw",
+        "file_type": "bigwig"
+      }
+    ]
+  },
+  "model": {
+    "type": "CNN",
+    "args": {
+      "output_size": 1
     }
+  },
+  "train": {
+    "optimizer": {
+      "type": "Adam",
+      "params": {
+        "lr": 1e-3
+      }
+    },
+    "criterion": {
+      "type": "MSELoss",
+      "params": {}
+    }
+  },
+  "explain": {
+    "target": 0,
+    "output_dir": "motif_results",
+    "max_seqlets": 2000
+  },
+  "predict": {
+    "vcf_path": "Test/test.vcf",
+    "sequence_length": 1000,
+    "metric_func": "diff",
+    "mean_by_tasks": true
+  }
 }
 ```
 
-## Advanced Usage
+### Important schema detail
 
-Use DeepGeSeq in your own project, you can define your own data, model, and training loop.
+For optimizer/loss settings, use nested `params` fields:
 
-### Define your data
+- `train.optimizer.params`
+- `train.criterion.params`
+
+This matches the current CLI initialization behavior.
+
+## Typical Inputs
+
+- Genome FASTA: `GRCh38.p13.genome.fa.gz`
+- Intervals BED: `random_regions.bed`
+- Target BigWig/BED: `hg38.gc5Base.bw`
+- Variant VCF: `test.vcf`
+
+## Outputs
+
+Common outputs produced by CLI runs:
+
+- `checkpoints/best_model.pt` and `checkpoints/final_model.pt`
+- `<output_dir>/metrics.csv` (evaluation)
+- `<output_dir>/variant_predictions.csv` (prediction)
+- `<explain.output_dir>/` motif outputs (explain)
+- `<output_dir>/<output_dir>_<timestamp>.log` (runtime log)
+
+## Python API Examples
+
+### Build a custom dataset
+
 ```python
-from DeepGeSeq.Dataset import SeqDataset
-from DeepGeSeq.Data import create_dataloader
+import numpy as np
+from typing import Tuple
+
+from DGS.Data import SeqDataset, create_dataloader
+
+
 class MyData(SeqDataset):
-    def __init__(self,
-        intervals: Interval,
-        genome: Genome,
-        targets: Target,
-        strand_aware: bool = True
-    ):
+    def __init__(self, intervals, genome, labels, strand_aware: bool = True):
         super().__init__(intervals, genome, strand_aware)
-        # add your own labels here
         self.labels = labels
 
     def __getitem__(self, idx: int) -> Tuple[np.ndarray, np.ndarray]:
-        """Return a sequence and its labels by index."""
         seq = self.seqs[idx]
-        label = self.labels[idx]
-        return seq.to_onehot(), label
+        return seq.to_onehot(), self.labels[idx]
+
 
 my_dataset = MyData(intervals, genome, labels)
-my_dataloader = create_dataloader(my_dataset, batch_size=32, shuffle=True)
+my_loader = create_dataloader(my_dataset, batch_size=32, shuffle=True)
 ```
 
-### Custom Model Development
+### Build and train a model
+
 ```python
 import torch
-from DeepGeSeq.Model import BaseModel
 
-class MyModel(BaseModel):
-    def __init__(self, input_size=1000, output_size=1):
-        super().__init__()
-        self.conv = torch.nn.Conv1d(4, 64, 3)
-        self.fc = torch.nn.Linear(64 * (input_size-2), output_size)
-    
-    def forward(self, x):
-        x = self.conv(x)
-        x = x.view(x.size(0), -1)
-        return self.fc(x)
-```
+from DGS.DL.Trainer import Trainer
 
-### Custom Training Loop
-```python
-from DeepGeSeq.DL import Trainer
 
-# Initialize trainer with custom settings
+model = torch.nn.Sequential(
+    torch.nn.Conv1d(4, 64, kernel_size=3),
+    torch.nn.ReLU(),
+    torch.nn.Flatten(),
+    torch.nn.Linear(64 * 998, 1)
+)
+
 trainer = Trainer(
-    model=my_model,
+    model=model,
     criterion=torch.nn.BCELoss(),
-    optimizer=torch.optim.Adam(my_model.parameters()),
-    device=device,
+    optimizer=torch.optim.Adam(model.parameters(), lr=1e-3),
+    device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
     checkpoint_dir="checkpoints",
     use_tensorboard=True
 )
 
-# Train model
-trainer.train(
-    my_dataloader,
-    my_dataloader,
-    epochs=100,
-    early_stopping=True
-)
+trainer.train(train_loader=my_loader, val_loader=my_loader, epochs=10, early_stopping=True)
 ```
 
-### Evaluate model
+### Evaluate
+
 ```python
-# Validate model predictions
-predictions, targets = trainer.validate(my_dataloader)
+from DGS.DL.Evaluator import calculate_classification_metrics
 
-# Evaluate model performance
-from DeepGeSeq.DL import Evaluator
-metrics = Evaluator.calculate_classification_metrics(targets, predictions)
-metrics = Evaluator.calculate_regression_metrics(targets, predictions)
+avg_loss, avg_metric, predictions, targets = trainer.validate(my_loader, return_predictions=True)
+metrics = calculate_classification_metrics(targets, predictions)
 ```
 
-### Predict on new data
+### Predict
+
 ```python
-# model predict on new data
-predictions = trainer.predict(my_dataloader)
+predictions = trainer.predict(my_loader)
 ```
+
+## Tutorials
+
+See the `Tutorials/` directory for notebook-based walkthroughs.
 
 ## Contributing
 
-We welcome contributions! Please see our [contributing guidelines](CONTRIBUTING.md) for details.
+Issues and pull requests are welcome:
+
+- Issues: https://github.com/JiaqiLiZju/DeepGeSeq/issues
 
 ## Citation
 
 If you use DeepGeSeq in your research, please cite:
+
 ```bibtex
 @article{li2024deepgeseq,
   title={DeepGeSeq: Deep learning library for Genomic Sequence modeling and analysis},
@@ -323,14 +247,13 @@ If you use DeepGeSeq in your research, please cite:
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the BSD 3-Clause License. See [LICENSE](LICENSE).
 
 ## Contact
 
-- Issues: Please use the [GitHub issue tracker](https://github.com/JiaqiLiZju/DeepGeSeq/issues)
 - Email: jiaqili@zju.edu.cn
 
 ## News
-- 2020.03: DeepGeSeq is quite unstable under activate development.
-- 2024.10: updating CaseStudies in Manuscript
-- 2025.02: updating Documents, Tutorials
+
+- 2024.10: Updating case studies in manuscript
+- 2025.02: Updating documents and tutorials
