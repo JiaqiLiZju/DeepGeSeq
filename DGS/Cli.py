@@ -233,14 +233,14 @@ def execute_dgs_evaluate(test_loader, trainer):
 
     if target_task == 'classification':
         if predictions.ndim == 3:
-            metrics = calculate_sequence_classification_metrics(predictions, targets)
+            metrics = calculate_sequence_classification_metrics(targets, predictions)
         else:
-            metrics = calculate_classification_metrics(predictions, targets)
+            metrics = calculate_classification_metrics(targets, predictions)
     elif target_task == 'regression':
         if predictions.ndim == 3:
-            metrics = calculate_sequence_regression_metrics(predictions, targets)
+            metrics = calculate_sequence_regression_metrics(targets, predictions)
         else:
-            metrics = calculate_regression_metrics(predictions, targets)
+            metrics = calculate_regression_metrics(targets, predictions)
     logger.info("Calculated metrics")
 
     return metrics
@@ -487,6 +487,15 @@ class DgsCLI:
             from . import Model
             model_config = self.config["model"]
             model_type = model_config["type"]
+            available_models = sorted(
+                name for name in dir(Model)
+                if not name.startswith("_") and isinstance(getattr(Model, name), type)
+            )
+            if not hasattr(Model, model_type):
+                raise ValueError(
+                    f"Unknown model type '{model_type}'. Available exported models: {available_models}. "
+                    "If you expect this model to exist, ensure it is exported in DGS/Model/__init__.py."
+                )
             model = getattr(Model, model_type)
             self.model = model(**model_config.get("args", {}))
             self.model = self.model.to(self.device)
@@ -634,6 +643,7 @@ class DgsCLI:
         """Execute explanation mode."""
         if not hasattr(self, "model"):
             raise RuntimeError("No model available for explanation")
+        explain_config = self.config.get("explain", {})
         
         self.logger.info("Preparing data for explanation...")
         if not hasattr(self, "explain_data_loader"):
@@ -651,10 +661,10 @@ class DgsCLI:
         execute_dgs_explain(
             self.model,
             self.explain_data_loader,
-            target=self.config["explain"].get("target", 0),
+            target=explain_config.get("target", 0),
             device=self.device,
-            output_dir=self.config["explain"].get("motif_results", "motif_results"), 
-            max_seqlets=self.config["explain"].get("max_seqlets", 2000)
+            output_dir=explain_config.get("output_dir", explain_config.get("motif_results", "motif_results")), 
+            max_seqlets=explain_config.get("max_seqlets", 2000)
         )
         self.logger.info("Explanation completed.")
     
