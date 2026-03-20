@@ -32,7 +32,17 @@ Usage Example:
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional, Union, Literal, List
+from typing import Dict, Any, Optional, Union, List
+try:
+    from typing import Literal  # Python >= 3.8
+except ImportError:
+    try:
+        from typing_extensions import Literal  # Python 3.7 fallback
+    except ImportError:
+        class _Literal:
+            def __getitem__(self, _):
+                return Any
+        Literal = _Literal()  # type: ignore
 from dataclasses import dataclass, field, asdict
 
 @dataclass
