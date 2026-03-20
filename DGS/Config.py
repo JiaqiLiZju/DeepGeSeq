@@ -370,6 +370,8 @@ class ConfigManager:
 
         Args:
             example: Type of example configuration ('minimal' or 'full')
+                - minimal: concise demonstration config for quick orientation
+                - full: schema-aligned reference config for production use
             output: Path to save the example configuration
 
         Raises:
@@ -384,7 +386,11 @@ class ConfigManager:
         self._config = config
         self.save_config(output)
 
-# minimal config
+# Minimal demonstration config.
+# Note:
+#   This example intentionally keeps fields concise and may omit nested
+#   structure used by strict dataclass schema in some sections.
+#   For schema-aligned usage, prefer `complete_configs` below.
 minimal_config = {
     "modes" : ["train", "evaluate", "explain", "predict"],
     "device": "cuda",
@@ -424,7 +430,7 @@ minimal_config = {
               }
 }
 
-# Example configurations for different scenarios
+# Full reference config aligned with dataclass-style schema.
 complete_configs = {
     "modes": ["train", "evaluate", "predict"],
     "device": "cuda",

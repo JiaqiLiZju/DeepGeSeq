@@ -1,31 +1,7 @@
-"""
-DGS Command Line Interface Implementation Module
+"""DGS command-line execution helpers.
 
-This module implements the core functionality of the DGS (Deep Genomic Sequence Analysis Toolkit)
-command line interface. It provides a comprehensive set of classes and functions for executing
-various genomic analysis tasks.
-
-Key Components:
-
-1. DgsCLI Class:
-   - Main client class for executing DGS commands
-   - Handles configuration validation and component initialization
-   - Manages execution flow for all analysis modes
-
-2. Core Execution Functions:
-   - execute_dgs_train: Model training with customizable parameters
-   - execute_dgs_evaluate: Model evaluation and metrics calculation
-   - execute_dgs_explain: Model interpretation and visualization
-   - execute_dgs_predict: Sequence prediction and variant effect prediction
-   - execute_dgs_hpo: Hyperparameter optimization (planned feature)
-
-3. Data Preprocessing Functions:
-   - preprocess_data_for_train: Prepare data for model training
-   - preprocess_data_for_evaluate: Prepare data for model evaluation
-   - preprocess_data_for_explain: Prepare data for model interpretation
-   - preprocess_data_for_predict: Prepare data for sequence prediction
-
-Each component is designed to work independently or as part of a complete analysis pipeline.
+This module wires configuration into runnable train/evaluate/explain/predict
+workflows and exposes a `DgsCLI` orchestrator for multi-mode execution.
 """
 
 from typing import Optional, Dict, Any
@@ -40,7 +16,10 @@ from torch import optim
 
 logger = logging.getLogger(__name__)
 
-# TODO not implemented
+# TODO: add a public HPO command entrypoint.
+# Why: the architecture module already contains tuning helpers, but CLI users
+# cannot invoke them directly.
+# Done criteria: expose a stable `execute_dgs_hpo` path with config validation.
 # def execute_dgs_hpo(search_space=None):
 #     from .Architecture import hyperparameter_tune
 #     hyperparameter_tune(search_space=search_space, num_samples=10, max_num_epochs=10, gpus_per_trial=1)
@@ -135,6 +114,11 @@ def execute_dgs_train(train_loader, validate_loader,
 
     Returns:
         tuple: (model, trainer) - Trained model and trainer instance
+
+    Side effects:
+        - Writes checkpoints under `checkpoint_dir`.
+        - Optionally writes TensorBoard logs under `tensorboard_dir`.
+        - Reloads `best_model.pt` from `checkpoint_dir` before returning.
     """
     from .DL.Trainer import Trainer
 
@@ -213,6 +197,9 @@ def execute_dgs_evaluate(test_loader, trainer):
             - For classification: accuracy, precision, recall, F1-score, ROC-AUC
             - For regression: MSE, MAE, R2 score, correlation
             - For sequence tasks: position-wise metrics
+
+    Side effects:
+        - Reloads `best_model.pt` from `trainer.checkpoint_dir` before evaluation.
     """
     from .DL.Evaluator import calculate_classification_metrics, calculate_regression_metrics
     from .DL.Evaluator import calculate_sequence_classification_metrics, calculate_sequence_regression_metrics
@@ -325,7 +312,11 @@ def execute_dgs_explain(model, test_loader, target, device, output_dir="motif_re
         max_seqlets (int): Maximum number of sequence elements to analyze
 
     Note:
-        Motif enrichment results will be saved to the specified output directory
+        Motif enrichment results will be saved to the specified output directory.
+
+    Runtime dependencies:
+        - Underlying explain pipeline requires `tangermeme`.
+        - Motif discovery/report steps require `modisco` CLI in PATH.
     """
     from .DL.Explain import motif_enrich
     motif_enrich(model, test_loader.dataset, target=target, device=device,
@@ -376,6 +367,9 @@ def execute_dgs_predict(model, vds, variant_df, metric_func, mean_by_tasks, devi
 
     Returns:
         DataFrame: Prediction results for each variant
+
+    Side effects:
+        - Adds a `P_diff` column to `variant_df` in place.
     """
     from .DL.Predict import vep_centred_on_ds
     
@@ -548,6 +542,11 @@ class DgsCLI:
 
         Raises:
             ValueError: If an invalid command is specified
+
+        Side effects:
+            Depending on selected modes, this call may train models, write
+            checkpoints, save evaluation metrics, produce motif outputs, and
+            write variant prediction CSV files.
         """
     
         # Training mode

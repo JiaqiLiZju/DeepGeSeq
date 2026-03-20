@@ -38,7 +38,14 @@ def _set_torch_seed(seed: int = 12):
     torch.cuda.manual_seed_all(seed)
 
 def _set_torch_benchmark():
-    """Setup PyTorch benchmark mode"""
+    """Configure cuDNN benchmark/determinism flags.
+
+    Note:
+        This function enables both `torch.backends.cudnn.benchmark`
+        and `torch.backends.cudnn.deterministic` as currently implemented.
+        The combination can affect performance/reproducibility trade-offs
+        depending on workload and backend behavior.
+    """
     torch.backends.cudnn.benchmark = True
     torch.backends.cudnn.deterministic = True
 
@@ -81,7 +88,14 @@ def setup_environment(output_dir: str,
                       seed: int = 12, 
                       benchmark: bool = True,
                       gpu: int = 0) -> Tuple[torch.device, logging.Logger]:
-    """Setup execution environment"""
+    """Setup execution environment.
+
+    Side effects:
+        - Creates `output_dir` if missing.
+        - Creates and configures a log file in `output_dir`.
+        - Sets Python/NumPy/PyTorch random seeds.
+        - Optionally updates cuDNN benchmark configuration.
+    """
     # Create output directory
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

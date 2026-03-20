@@ -1,30 +1,13 @@
-"""
-Model Interpretation and Explanation Module
+"""Model interpretation utilities for DGS.
 
-This module provides tools for interpreting and explaining deep learning model predictions
-on genomic sequences. It implements various interpretation methods including:
-- DeepLIFT/SHAP for attribution calculation
-- TF-MoDISco for motif discovery
-- Seqlet calling for regulatory element identification
+The module provides:
+- attribution computation (DeepLIFT/SHAP-style scores)
+- motif enrichment workflow (TF-MoDISco-lite CLI integration)
+- seqlet discovery and optional motif annotation
 
-Key Features:
-1. Attribution Analysis:
-   - Calculate importance scores for input sequences
-   - Support for multi-task models
-   - Batch processing capabilities
-
-2. Motif Discovery:
-   - Automated motif enrichment analysis
-   - Integration with TF-MoDISco-lite
-   - Result visualization and reporting
-
-3. Sequence Element Analysis:
-   - Seqlet identification and extraction
-   - Motif annotation and scoring
-   - Statistical significance assessment
-
-The module integrates with external tools like TangerMeme for comprehensive
-sequence analysis and visualization.
+External dependencies:
+- `tangermeme` Python package (DeepLIFT/SHAP and seqlet utilities)
+- `modisco` CLI command (invoked via subprocess for motif workflows)
 """
 
 from tangermeme.deep_lift_shap import deep_lift_shap
@@ -58,8 +41,9 @@ def calculate_shap(model, X, target, device):
         np.ndarray: Attribution scores with shape matching input (N, 4, L)
 
     Note:
-        The function automatically handles device placement and error recovery.
-        In case of computation failure, returns zero attributions.
+        The function automatically handles device placement and fallback behavior.
+        If attribution computation fails, an error is printed and zero-valued
+        attributions are returned with the same shape as input.
     """
 
     # Set model to evaluation mode
@@ -146,7 +130,15 @@ def motif_enrich(model, ds, target, output_dir="motif_results", max_seqlets=2000
     Returns:
         str: Path to generated motifs file
 
+    Raises:
+        subprocess.CalledProcessError:
+            If `modisco motifs` or `modisco report` command fails.
+
     Note:
+        Runtime requirements:
+        - `tangermeme` must be importable.
+        - `modisco` command must be available in PATH.
+
         Results include:
         - Sequence attributions (NPZ format)
         - Discovered motifs (MEME format)
@@ -211,7 +203,16 @@ def Seqlet_Calling(model, ds, target, output_dir="seqlet_results", motif_db=None
             - Motif matches (if database provided)
             - Statistical significance
 
+    Raises:
+        FileNotFoundError:
+            Potentially raised by downstream motif readers if motif files are missing.
+
     Note:
+        Runtime requirements:
+        - `tangermeme` must be importable.
+        - If motif annotation is requested, `motif_db` should point to a valid
+          MEME-format motif file.
+
         Results are saved in BED format for compatibility with
         genome browsers and downstream analysis tools.
     """

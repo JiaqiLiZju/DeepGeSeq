@@ -107,7 +107,9 @@ def variants_to_intervals(variants, seq_len=1000) -> Interval:
     return intervals
 
 
-# TODO: move to Data.Sequence.DNASeq
+# TODO: move this helper into `Data.Sequence.DNASeq` (or related sequence module).
+# Why: variant-edit operations belong with sequence primitives, not prediction IO.
+# Done criteria: `mutate` is imported from the sequence layer and removed here.
 def mutate(seq, var_ref, var_alt):
     """
     Apply genetic variants to a reference sequence.

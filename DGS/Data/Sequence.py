@@ -483,7 +483,7 @@ class Genome:
             List[DNASeq]: Extracted sequences
             
         Raises:
-            RuntimeError: If called outside context manager
+            RuntimeError: If reader is unavailable (e.g., closed or not initialized)
             ValueError: If intervals are invalid
             KeyError: If chromosome not found
         """

@@ -395,7 +395,13 @@ def show_auc_curve(metrics,
     - Automatic figure management
 
     Args:
-        metrics (Dict): Dictionary containing ROC curve data
+        metrics (Dict): ROC curve dictionary with per-task entries.
+            Expected schema:
+            {
+                "task_0": {"fpr": array-like, "tpr": array-like, ...},
+                "task_1": {"fpr": array-like, "tpr": array-like, ...},
+                ...
+            }
         fig_size (tuple): Figure size (width, height)
         save (bool): Whether to save plot to file
         output_dir (str): Directory for saving plots
@@ -407,7 +413,8 @@ def show_auc_curve(metrics,
 
     Note:
         Creates a new figure for each call and closes it
-        after saving to prevent memory leaks.
+        after saving to prevent memory leaks. If `save=True`,
+        `output_dir` is expected to exist before calling this function.
     """
     import matplotlib
     backend = matplotlib.get_backend()
@@ -460,7 +467,13 @@ def show_pr_curve(metrics,
     - Automatic figure management
 
     Args:
-        metrics (Dict): Dictionary containing PR curve data
+        metrics (Dict): PR curve dictionary with per-task entries.
+            Expected schema:
+            {
+                "task_0": {"precision": array-like, "recall": array-like, ...},
+                "task_1": {"precision": array-like, "recall": array-like, ...},
+                ...
+            }
         fig_size (tuple): Figure size (width, height)
         save (bool): Whether to save plot to file
         output_dir (str): Directory for saving plots
@@ -472,7 +485,8 @@ def show_pr_curve(metrics,
 
     Note:
         Creates a new figure for each call and closes it
-        after saving to prevent memory leaks.
+        after saving to prevent memory leaks. If `save=True`,
+        `output_dir` is expected to exist before calling this function.
     """
     import matplotlib
     backend = matplotlib.get_backend()
@@ -504,6 +518,5 @@ def show_pr_curve(metrics,
     else:
         plt.show()
     plt.close()
-
 
 

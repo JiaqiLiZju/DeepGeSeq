@@ -15,7 +15,11 @@ import logging
 import torch
 from torch import nn
 
-# TODO maybe not suitable for probability models
+# TODO: revisit whether this base class should support probability-model outputs.
+# Why: some downstream tasks may require distributional outputs instead of
+# deterministic point predictions.
+# Done criteria: define expected probabilistic interface or explicitly scope
+# this class to deterministic predictors in docs.
 class BasicModel(nn.Module):
     """Basic Model class in DGS.
     
@@ -105,4 +109,3 @@ class BasicModel(nn.Module):
         logging.debug("Predictor output shape: %s", str(out.shape))
 
         return out
-
