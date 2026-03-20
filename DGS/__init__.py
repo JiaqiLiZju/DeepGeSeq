@@ -12,6 +12,7 @@ import sys
 import datetime
 import logging
 from pathlib import Path
+from typing import Tuple
 
 import torch
 import random
@@ -79,7 +80,7 @@ def setup_environment(output_dir: str,
                       verbose: int = 1, 
                       seed: int = 12, 
                       benchmark: bool = True,
-                      gpu: int = 0) -> tuple[torch.device, logging.Logger]:
+                      gpu: int = 0) -> Tuple[torch.device, logging.Logger]:
     """Setup execution environment"""
     # Create output directory
     output_dir = Path(output_dir)
