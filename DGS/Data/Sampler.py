@@ -1,29 +1,17 @@
-"""
-Data Sampling and Splitting Module
+"""Dataset splitting helpers for genomic intervals.
 
-This module provides comprehensive utilities for sampling and splitting genomic datasets:
+Purpose:
+    Provide deterministic utilities to split `Interval` objects for training.
 
-Key Features:
-1. Dataset Splitting:
-   - Random splitting with stratification
-   - Chromosome-based splitting for genomic data
-   - Support for train/test and train/val/test splits
-   - Customizable split ratios
+Main Responsibilities:
+    - Implement random split for train/test or train/val/test partitioning.
+    - Implement chromosome-based split to reduce genomic leakage.
+    - Preserve interval metadata by returning `Interval`-typed subsets.
 
-2. Sampling Strategies:
-   - Random sampling with seed control
-   - Balanced sampling for imbalanced data
-   - Region-based sampling for genomic intervals
-   - Cross-validation support
-
-3. Data Management:
-   - Interval-based data handling
-   - Index tracking and preservation
-   - Split validation and statistics
-   - Memory-efficient operations
-
-The module ensures reproducible and statistically sound data splitting
-for genomic deep learning applications.
+Key Runtime Notes:
+    - Split sizes are computed from interval counts and rounded down to integers.
+    - Random splits use NumPy random state for reproducibility.
+    - Chromosome splits assume the `chrom` column is available in interval data.
 """
 
 import numpy as np
@@ -138,4 +126,3 @@ def chromosome_split(
     train_intervals = intervals.__class__(intervals.data[~test_mask])
     
     return (train_intervals, test_intervals)
-

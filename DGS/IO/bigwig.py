@@ -1,34 +1,17 @@
-"""BigWig file reader module for genomic signal data.
+"""BigWig signal readers for interval-aligned target extraction.
 
-This module provides functionality for reading and processing BigWig format files,
-which store continuous signal data across genomic coordinates. It supports random
-access to genomic regions and flexible signal aggregation.
+Purpose:
+    Read BigWig values and align them to genomic interval inputs.
 
-Classes
--------
-BigWigReader
-    Reader for BigWig signal files with the following features:
-    - Random access to genomic regions
-    - Signal aggregation with multiple functions
-    - Flexible binning options
-    - Multi-track support
-    - Comprehensive error handling
+Main Responsibilities:
+    - Validate BigWig files and interval inputs.
+    - Extract raw or binned signal arrays per interval.
+    - Apply optional aggregation (`mean`, `max`, `min`, `sum`, or callable).
 
-Notes
------
-The module requires the pyBigWig package for file access. Signal values can be
-aggregated using various functions (mean, max, min, sum) and can be binned to
-reduce resolution. Missing or invalid regions return appropriate zero/NA values.
-
-Examples
---------
->>> reader = BigWigReader("signal.bw")
->>> intervals = pd.DataFrame({
-...     "chrom": ["chr1", "chr1"],
-...     "start": [1000, 2000],
-...     "end": [1500, 2500]
-... })
->>> signals = reader.read(intervals, bin_size=10, aggfunc="mean")
+Key Runtime Notes:
+    - Requires `pyBigWig` at runtime.
+    - Missing/failed intervals are represented with zero-filled arrays.
+    - Binned aggregation supports short tail bins without reshape assumptions.
 """
 
 import numpy as np
@@ -45,15 +28,13 @@ class BigWigReader:
     format files. Supports random access to genomic regions, signal aggregation,
     and flexible binning options.
 
-    Attributes
-    ----------
+    Attributes:
     file_path : Path
         Path to the BigWig file
     VALID_EXTENSIONS : list of str
         List of valid file extensions [".bw", ".bigwig", ".bigWig"]
 
-    Methods
-    -------
+    Methods:
     read(intervals, bin_size=None, aggfunc=None, **kwargs)
         Read signal values for specified genomic intervals
     check_file()
@@ -61,8 +42,7 @@ class BigWigReader:
     validate_intervals(intervals)
         Validate genomic interval data format
 
-    Examples
-    --------
+    Examples:
     >>> reader = BigWigReader("signal.bw")
     >>> signals = reader.read(intervals, bin_size=10, aggfunc="mean")
     """
@@ -72,13 +52,11 @@ class BigWigReader:
     def __init__(self, file_path: Union[str, Path]):
         """Initialize BigWig reader.
         
-        Parameters
-        ----------
+        Args:
         file_path : str or Path
             Path to BigWig file
             
-        Raises
-        ------
+        Raises:
         ValueError
             If file path is invalid or file doesn't exist
         """
@@ -89,8 +67,7 @@ class BigWigReader:
     def check_file(self) -> bool:
         """Check if file has valid extension and exists.
         
-        Returns
-        -------
+        Returns:
         bool
             True if file is valid, False otherwise
         """
@@ -108,8 +85,7 @@ class BigWigReader:
     ) -> np.ndarray:
         """Read coverage values from BigWig file.
         
-        Parameters
-        ----------
+        Args:
         intervals : pd.DataFrame
             DataFrame with genomic intervals (chrom, start, end)
         bin_size : int, optional
@@ -120,26 +96,27 @@ class BigWigReader:
         **kwargs : dict
             Additional arguments passed to pyBigWig
             
-        Returns
-        -------
+        Returns:
         np.ndarray
             Array of shape (n_intervals, n_bins) with coverage values
             
-        Raises
-        ------
+        Raises:
         IOError
             If file reading fails
         ValueError
             If arguments are invalid
             
-        Notes
-        -----
+        Notes:
         - Missing regions return zero values
         - NaN values are converted to zeros
         - When binning, the last bin may be smaller
         """
         try:
             import pyBigWig
+
+            if bin_size is not None:
+                if not isinstance(bin_size, int) or bin_size <= 0:
+                    raise ValueError("bin_size must be a positive integer when provided")
             
             # Validate intervals
             self.validate_intervals(intervals)
@@ -151,30 +128,27 @@ class BigWigReader:
             signals = []
             with pyBigWig.open(str(self.file_path)) as bw:
                 for row in intervals.itertuples():
+                    expected_length = self._expected_length(
+                        start=row.start,
+                        end=row.end,
+                        bin_size=bin_size,
+                        has_agg=aggfunc is not None,
+                    )
                     try:
-                        # Calculate length for zero array in case of error
-                        interval_length = row.end - row.start
-                        if bin_size and aggfunc is not None:
-                            interval_length = interval_length // bin_size
-                        if interval_length < 1:
-                            interval_length = 1
-                            
                         # Read raw signal
                         signal = bw.values(row.chrom, row.start, row.end, numpy=True)
                         if signal is None:
-                            signal = np.zeros(interval_length)
+                            signal = np.zeros(expected_length, dtype=np.float32)
                         else:
                             signal = np.nan_to_num(signal)
                         
                         # Aggregate if requested
                         if aggfunc is not None:
                             if bin_size:
-                                # Aggregate over bins
-                                signal = signal.reshape(-1, bin_size)
-                                signal = aggfunc(signal, axis=-1)
+                                signal = self._aggregate_binned_signal(signal, bin_size, aggfunc)
                             else:
                                 # Aggregate over whole interval
-                                signal = aggfunc(signal)
+                                signal = np.asarray([aggfunc(signal)])
                             
                         signals.append(signal)
                         
@@ -182,7 +156,7 @@ class BigWigReader:
                         logger.warning(
                             f"Failed to read interval {row.chrom}:{row.start}-{row.end}: {e}"
                         )
-                        signals.append(np.zeros(interval_length))
+                        signals.append(np.zeros(expected_length, dtype=np.float32))
                         
             # Stack and return
             return np.asarray(signals)
@@ -190,6 +164,31 @@ class BigWigReader:
         except Exception as e:
             logger.error(f"Failed to read BigWig file {self.file_path}: {str(e)}")
             raise
+
+    @staticmethod
+    def _expected_length(start: int, end: int, bin_size: Optional[int], has_agg: bool) -> int:
+        """Infer output length for an interval under current aggregation settings."""
+        interval_length = max(1, end - start)
+        if has_agg:
+            if bin_size:
+                return max(1, int(np.ceil(interval_length / bin_size)))
+            return 1
+        return interval_length
+
+    @staticmethod
+    def _aggregate_binned_signal(signal: np.ndarray, bin_size: int, aggfunc: Callable) -> np.ndarray:
+        """Aggregate a 1D signal into bins, including a potentially short tail bin."""
+        if signal.size == 0:
+            return np.zeros((1,), dtype=np.float32)
+
+        bins = []
+        for start_idx in range(0, signal.size, bin_size):
+            chunk = signal[start_idx:start_idx + bin_size]
+            try:
+                bins.append(aggfunc(chunk, axis=-1))
+            except TypeError:
+                bins.append(aggfunc(chunk))
+        return np.asarray(bins)
             
     def _get_aggfunc(
         self,
@@ -197,23 +196,19 @@ class BigWigReader:
     ) -> Optional[Callable]:
         """Get aggregation function.
         
-        Parameters
-        ----------
+        Args:
         func : str or callable, optional
             Name of aggregation function or callable
             
-        Returns
-        -------
+        Returns:
         callable or None
             Aggregation function if specified
             
-        Raises
-        ------
+        Raises:
         ValueError
             If function name is invalid
             
-        Notes
-        -----
+        Notes:
         Supported function names:
         - "mean": Average value
         - "max": Maximum value
@@ -244,18 +239,15 @@ class BigWigReader:
     def validate_intervals(self, intervals: pd.DataFrame) -> None:
         """Validate genomic intervals data format.
         
-        Parameters
-        ----------
+        Args:
         intervals : pd.DataFrame
             DataFrame with genomic intervals
             
-        Raises
-        ------
+        Raises:
         ValueError
             If intervals format is invalid
             
-        Notes
-        -----
+        Notes:
         Validates:
         - Required columns (chrom, start, end)
         - Column data types

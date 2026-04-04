@@ -1,7 +1,17 @@
-"""DGS command-line execution helpers.
+"""DGS CLI orchestration utilities.
 
-This module wires configuration into runnable train/evaluate/explain/predict
-workflows and exposes a `DgsCLI` orchestrator for multi-mode execution.
+Purpose:
+    Bridge normalized configuration dictionaries to executable DGS workflows.
+
+Main Responsibilities:
+    - Build datasets and dataloaders for train/evaluate/explain/predict modes.
+    - Initialize runtime components (model, optimizer, criterion, trainer).
+    - Execute mode-specific pipelines through the `DgsCLI` coordinator.
+
+Key Runtime Notes:
+    - Compatibility keys are preserved where possible to avoid breaking configs.
+    - Evaluation can run in checkpoint-only mode via `evaluate.checkpoint_path`.
+    - Prediction supports optional batched inference dataloader settings.
 """
 
 from typing import Optional, Dict, Any
@@ -24,28 +34,56 @@ logger = logging.getLogger(__name__)
 #     from .Architecture import hyperparameter_tune
 #     hyperparameter_tune(search_space=search_space, num_samples=10, max_num_epochs=10, gpus_per_trial=1)
 
+
+def _get_dataloader_kwargs(dataloader_config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Filter dataloader runtime options while keeping defaults backward compatible.
+
+    Args:
+        dataloader_config: Optional dictionary from user config.
+
+    Returns:
+        Dictionary containing only supported `torch.utils.data.DataLoader`
+        runtime keys with non-`None` values.
+    """
+    if not dataloader_config:
+        return {}
+    allowed_keys = {
+        "num_workers",
+        "pin_memory",
+        "persistent_workers",
+        "prefetch_factor",
+    }
+    return {k: v for k, v in dataloader_config.items() if k in allowed_keys and v is not None}
+
 def preprocess_data_for_train(genome_path, target_tasks, intervals_path, 
                               train_test_split="random_split",
                               test_size=0.2, val_size=0.2,
                               test_chroms=["chr8"], val_chroms=["chr7"],
-                              strand_aware=True, batch_size=4):
-    """
-    Prepare genomic data for model training by loading and preprocessing sequences and targets.
+                              strand_aware=True, batch_size=4,
+                              dataloader_config: Optional[Dict[str, Any]] = None):
+    """Build train/validation/test dataloaders for supervised training.
 
     Args:
-        genome_path (str): Path to the reference genome file
-        target_tasks (list): List of target tasks to predict
-        intervals_path (str): Path to the genomic intervals file
-        train_test_split (str): Split strategy ('random_split' or 'chromosome_split')
-        test_size (float): Proportion of data for testing (for random_split)
-        val_size (float): Proportion of data for validation (for random_split)
-        test_chroms (list): Chromosomes to use for testing (for chromosome_split)
-        val_chroms (list): Chromosomes to use for validation (for chromosome_split)
-        strand_aware (bool): Whether to consider DNA strand information
-        batch_size (int): Batch size for data loading
+        genome_path (str): Path to the reference genome FASTA.
+        target_tasks (list): Task definitions consumed by `Target`.
+        intervals_path (str): Path to interval file used as base samples.
+        train_test_split (str): Split strategy (`random_split` or `chromosome_split`).
+        test_size (float): Test fraction when using random split.
+        val_size (float): Validation fraction when using random split.
+        test_chroms (list): Held-out chromosomes for chromosome split.
+        val_chroms (list): Validation chromosomes for chromosome split.
+        strand_aware (bool): Whether reverse-complement follows strand annotations.
+        batch_size (int): Dataloader batch size.
+        dataloader_config (dict, optional): Optional dataloader runtime overrides.
 
     Returns:
-        tuple: (train_loader, val_loader, test_loader) - DataLoader objects for each dataset
+        tuple: `(train_loader, val_loader, test_loader)`.
+
+    Raises:
+        ValueError: If split strategy or inputs are invalid.
+
+    Notes:
+        Reads genome/interval/target files and emits progress logs.
     """
     from .Data.Sequence import Genome
     from .Data.Target import Target
@@ -79,9 +117,10 @@ def preprocess_data_for_train(genome_path, target_tasks, intervals_path,
     logger.info("Created dataset")
 
     # create dataloader
-    train_loader = create_dataloader(train_ds, batch_size=batch_size, shuffle=True)
-    test_loader = create_dataloader(test_ds, batch_size=batch_size, shuffle=False)
-    val_loader = create_dataloader(val_ds, batch_size=batch_size, shuffle=False)
+    dataloader_kwargs = _get_dataloader_kwargs(dataloader_config)
+    train_loader = create_dataloader(train_ds, batch_size=batch_size, shuffle=True, **dataloader_kwargs)
+    test_loader = create_dataloader(test_ds, batch_size=batch_size, shuffle=False, **dataloader_kwargs)
+    val_loader = create_dataloader(val_ds, batch_size=batch_size, shuffle=False, **dataloader_kwargs)
     logger.info("Created dataloader")
     
     return train_loader, val_loader, test_loader
@@ -93,8 +132,7 @@ def execute_dgs_train(train_loader, validate_loader,
                        checkpoint_dir="checkpoints", 
                        use_tensorboard=True, tensorboard_dir="tensorboard", 
                        **trainer_args):
-    """
-    Execute model training with the specified parameters and data.
+    """Run model training and return the best-checkpoint model/trainer pair.
 
     Args:
         train_loader (DataLoader): DataLoader for training data
@@ -110,12 +148,12 @@ def execute_dgs_train(train_loader, validate_loader,
         checkpoint_dir (str): Directory for saving checkpoints
         use_tensorboard (bool): Whether to use TensorBoard for logging
         tensorboard_dir (str): Directory for TensorBoard logs
-        **trainer_args: Additional arguments for the Trainer
+        **trainer_args: Extra keyword arguments passed to `Trainer`.
 
     Returns:
-        tuple: (model, trainer) - Trained model and trainer instance
+        Tuple of `(model, trainer)`.
 
-    Side effects:
+    Notes:
         - Writes checkpoints under `checkpoint_dir`.
         - Optionally writes TensorBoard logs under `tensorboard_dir`.
         - Reloads `best_model.pt` from `checkpoint_dir` before returning.
@@ -150,7 +188,30 @@ def execute_dgs_train(train_loader, validate_loader,
 
 def preprocess_data_for_evaluate(genome_path, target_task, intervals_path,
                                   train_test_split="random_split", test_size=0.2, test_chroms=["chr8"],
-                                  strand_aware=True, batch_size=4):
+                                  strand_aware=True, batch_size=4,
+                                  dataloader_config: Optional[Dict[str, Any]] = None):
+    """Prepare an evaluation dataloader from genomic intervals and targets.
+
+    Args:
+        genome_path: Path to the reference genome FASTA.
+        target_task: Target-task definitions used to construct labels.
+        intervals_path: Path to BED-like interval file.
+        train_test_split: Split strategy (`"random_split"` or `"chromosome_split"`).
+        test_size: Fraction assigned to test split for random strategy.
+        test_chroms: Chromosomes assigned to test split for chromosome strategy.
+        strand_aware: Whether reverse-complement logic should use strand column.
+        batch_size: Evaluation batch size.
+        dataloader_config: Optional dataloader runtime overrides.
+
+    Returns:
+        Evaluation `DataLoader`.
+
+    Raises:
+        ValueError: If split configuration or input data is invalid.
+
+    Side effects:
+        Reads input files and emits progress logs.
+    """
     from .Data.Sequence import Genome
     from .Data.Target import Target
     from .Data.Interval import Interval
@@ -179,34 +240,39 @@ def preprocess_data_for_evaluate(genome_path, target_task, intervals_path,
     logger.info("Created dataset")
 
     # create dataloader
-    test_loader = create_dataloader(test_ds, batch_size=batch_size, shuffle=False)
+    test_loader = create_dataloader(
+        test_ds,
+        batch_size=batch_size,
+        shuffle=False,
+        **_get_dataloader_kwargs(dataloader_config),
+    )
     logger.info("Created dataloader")
 
     return test_loader
 
-def execute_dgs_evaluate(test_loader, trainer):
-    """
-    Evaluate a trained model and calculate performance metrics.
+def execute_dgs_evaluate(test_loader, trainer, checkpoint_path: Optional[str] = None):
+    """Evaluate a model checkpoint and compute task metrics.
 
     Args:
-        test_loader (DataLoader): DataLoader containing test data
-        trainer (Trainer): Trained model trainer instance
+        test_loader (DataLoader): Dataloader containing evaluation samples.
+        trainer (Trainer): Trainer instance used for validation.
+        checkpoint_path (str, optional): Explicit checkpoint path. When omitted,
+            defaults to `best_model.pt` under `trainer.checkpoint_dir`.
 
     Returns:
-        dict: Dictionary containing evaluation metrics:
-            - For classification: accuracy, precision, recall, F1-score, ROC-AUC
-            - For regression: MSE, MAE, R2 score, correlation
-            - For sequence tasks: position-wise metrics
+        Metrics object returned by evaluator utilities.
+        For current implementation this is typically a pandas DataFrame.
 
-    Side effects:
-        - Reloads `best_model.pt` from `trainer.checkpoint_dir` before evaluation.
+    Notes:
+        Reloads the selected checkpoint before running validation.
     """
     from .DL.Evaluator import calculate_classification_metrics, calculate_regression_metrics
     from .DL.Evaluator import calculate_sequence_classification_metrics, calculate_sequence_regression_metrics
 
-    # reload best model
-    trainer.load_checkpoint(os.path.join(trainer.checkpoint_dir, "best_model.pt"))
-    logger.info("Reloaded best model")
+    # reload model checkpoint
+    checkpoint_to_load = checkpoint_path or os.path.join(trainer.checkpoint_dir, "best_model.pt")
+    trainer.load_checkpoint(checkpoint_to_load, load_optimizer=False)
+    logger.info("Reloaded checkpoint for evaluation: %s", checkpoint_to_load)
 
     # evaluate
     avg_loss, metric, predictions, targets = trainer.validate(test_loader, return_predictions=True)
@@ -235,21 +301,25 @@ def execute_dgs_evaluate(test_loader, trainer):
 
 def preprocess_data_for_explain(genome_path, intervals_path,
                                 train_test_split="random_split", test_size=0.2, test_chroms=["chr8"],
-                                strand_aware=True, batch_size=4):
-    """
-    Prepare genomic data for model interpretation and explanation.
+                                strand_aware=True, batch_size=4,
+                                dataloader_config: Optional[Dict[str, Any]] = None):
+    """Build sequence dataloader used by attribution/explain workflows.
 
     Args:
-        genome_path (str): Path to the reference genome file
-        intervals_path (str): Path to the genomic intervals file
-        train_test_split (str): Split strategy ('random_split' or 'chromosome_split')
-        test_size (float): Proportion of data for testing (for random_split)
-        test_chroms (list): Chromosomes to use for testing (for chromosome_split)
-        strand_aware (bool): Whether to consider DNA strand information
-        batch_size (int): Batch size for data loading
+        genome_path (str): Path to the reference genome FASTA.
+        intervals_path (str): Path to interval file used for explain inputs.
+        train_test_split (str): Split strategy (`random_split` or `chromosome_split`).
+        test_size (float): Test fraction when using random split.
+        test_chroms (list): Held-out chromosomes for chromosome split.
+        strand_aware (bool): Whether reverse-complement follows strand annotations.
+        batch_size (int): Dataloader batch size.
+        dataloader_config (dict, optional): Optional dataloader runtime overrides.
 
     Returns:
-        DataLoader: DataLoader containing sequences for interpretation
+        DataLoader containing sequences for interpretation.
+
+    Notes:
+        Reads genome and interval files and emits progress logs.
     """
     from .Data.Sequence import Genome
     from .Data.Interval import Interval
@@ -274,7 +344,12 @@ def preprocess_data_for_explain(genome_path, intervals_path,
     logger.info("Created dataset")
 
     # create dataloader
-    test_loader = create_dataloader(test_ds, batch_size=batch_size, shuffle=False)
+    test_loader = create_dataloader(
+        test_ds,
+        batch_size=batch_size,
+        shuffle=False,
+        **_get_dataloader_kwargs(dataloader_config),
+    )
     logger.info("Created dataloader")
 
     return test_loader
@@ -291,15 +366,23 @@ def execute_dgs_model_predict(model, test_loader, target, device, output_dir="mo
         output_dir (str): Directory to save prediction results
         max_seqlets (int): Maximum number of sequence elements to process
 
-    Note:
-        Results will be saved to the specified output directory
+    Side effects:
+        Writes explanation-related artifacts through the prediction backend.
     """
     from .DL.Predict import predict
     predict(model, test_loader, target=target, device=device,
             output_dir=output_dir, max_seqlets=max_seqlets)
     logger.info("Model prediction completed")
 
-def execute_dgs_explain(model, test_loader, target, device, output_dir="motif_results", max_seqlets=2000):
+def execute_dgs_explain(
+    model,
+    test_loader,
+    target,
+    device,
+    output_dir="motif_results",
+    max_seqlets=2000,
+    batch_size=None,
+):
     """
     Generate model explanations and motif enrichment analysis.
 
@@ -310,9 +393,10 @@ def execute_dgs_explain(model, test_loader, target, device, output_dir="motif_re
         device (str): Device to use for computation ('cuda' or 'cpu')
         output_dir (str): Directory to save explanation results
         max_seqlets (int): Maximum number of sequence elements to analyze
+        batch_size (int, optional): Batch size for SHAP inference.
 
-    Note:
-        Motif enrichment results will be saved to the specified output directory.
+    Side effects:
+        Motif enrichment results are written under `output_dir`.
 
     Runtime dependencies:
         - Underlying explain pipeline requires `tangermeme`.
@@ -320,7 +404,7 @@ def execute_dgs_explain(model, test_loader, target, device, output_dir="motif_re
     """
     from .DL.Explain import motif_enrich
     motif_enrich(model, test_loader.dataset, target=target, device=device,
-                 output_dir=output_dir, max_seqlets=max_seqlets)
+                 output_dir=output_dir, max_seqlets=max_seqlets, batch_size=batch_size)
     logger.info("Motif enrichment completed")
 
 def preprocess_data_for_predict(genome_path, vcf_filename, target_len=1000):
@@ -333,7 +417,10 @@ def preprocess_data_for_predict(genome_path, vcf_filename, target_len=1000):
         target_len (int): Length of sequence context around variants
 
     Returns:
-        tuple: (VariantDataset, DataFrame) - Dataset for variant prediction and variant information
+        Tuple `(variant_dataset, variant_df)`.
+
+    Side effects:
+        Loads FASTA and VCF data and emits progress logs.
     """
     from .Data.Sequence import Genome
     from .DL.Predict import read_vcf
@@ -353,7 +440,16 @@ def preprocess_data_for_predict(genome_path, vcf_filename, target_len=1000):
 
     return vds, variant_df
 
-def execute_dgs_predict(model, vds, variant_df, metric_func, mean_by_tasks, device):
+def execute_dgs_predict(
+    model,
+    vds,
+    variant_df,
+    metric_func,
+    mean_by_tasks,
+    device,
+    batch_size=None,
+    dataloader_config: Optional[Dict[str, Any]] = None,
+):
     """
     Execute variant effect prediction.
 
@@ -364,9 +460,12 @@ def execute_dgs_predict(model, vds, variant_df, metric_func, mean_by_tasks, devi
         metric_func (callable): Function to calculate prediction metrics
         mean_by_tasks (bool): Whether to average predictions across tasks
         device (str): Device to use for prediction ('cuda' or 'cpu')
+        batch_size (int, optional): Batch size for batched variant inference.
+        dataloader_config (dict, optional): DataLoader runtime options for
+            prediction batching.
 
     Returns:
-        DataFrame: Prediction results for each variant
+        DataFrame with prediction results for each variant.
 
     Side effects:
         - Adds a `P_diff` column to `variant_df` in place.
@@ -374,10 +473,15 @@ def execute_dgs_predict(model, vds, variant_df, metric_func, mean_by_tasks, devi
     from .DL.Predict import vep_centred_on_ds
     
     # calculate P_diff
-    P_diff = vep_centred_on_ds(model, vds, 
-                               metric_func=metric_func, 
-                               mean_by_tasks=mean_by_tasks, 
-                               device=device)
+    P_diff = vep_centred_on_ds(
+        model,
+        vds,
+        metric_func=metric_func,
+        mean_by_tasks=mean_by_tasks,
+        device=device,
+        batch_size=batch_size,
+        dataloader_config=dataloader_config,
+    )
     logger.info("Calculated P_diff")
 
     # add P_diff to variant_df
@@ -415,18 +519,93 @@ class DgsCLI:
             device (str, optional): Device to use for computation. Defaults to None.
         """
         self.logger = logging.getLogger("dgs")
+        self.optimizer = None
+        self.criterion = None
+        self.trainer = None
+        self.train_loader = None
+        self.val_loader = None
+        self.test_loader = None
+        self.explain_data_loader = None
+        self.predict_data_loader = None
+        self.vds = None
+        self.variant_df = None
 
         # Validate essential config keys
         self.config = config
         self._validate_minimal_config()
 
-        if device is None and 'device' in self.config:
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if device is None:
+            requested_device = self.config.get("device", "cuda")
+            if requested_device == "cuda" and not torch.cuda.is_available():
+                requested_device = "cpu"
+            self.device = torch.device(requested_device)
         else:
-            self.device = device
+            self.device = torch.device(device)
 
         # Initialize components
         self._initialize_components()
+
+    def _build_dataloader_config(self) -> Dict[str, Any]:
+        """Build dataloader runtime options from config, keeping defaults unchanged."""
+        data_cfg = self.config.get("data", {})
+        dataloader_cfg = {
+            "num_workers": data_cfg.get("num_workers", 0),
+            "pin_memory": data_cfg.get("pin_memory", False),
+            "persistent_workers": data_cfg.get("persistent_workers", False),
+            "prefetch_factor": data_cfg.get("prefetch_factor"),
+        }
+        self.logger.info(
+            "DataLoader options: num_workers=%s, pin_memory=%s, persistent_workers=%s, prefetch_factor=%s",
+            dataloader_cfg["num_workers"],
+            dataloader_cfg["pin_memory"],
+            dataloader_cfg["persistent_workers"],
+            dataloader_cfg["prefetch_factor"],
+        )
+        return dataloader_cfg
+
+    def _build_predict_dataloader_config(self) -> Dict[str, Any]:
+        """Build prediction dataloader options with backward-compatible defaults."""
+        predict_cfg = self.config.get("predict", {})
+        dataloader_cfg = {
+            "num_workers": predict_cfg.get("num_workers", 0),
+            "pin_memory": predict_cfg.get("pin_memory", False),
+            "persistent_workers": predict_cfg.get("persistent_workers", False),
+            "prefetch_factor": predict_cfg.get("prefetch_factor"),
+        }
+        self.logger.info(
+            "Predict DataLoader options: num_workers=%s, pin_memory=%s, persistent_workers=%s, prefetch_factor=%s",
+            dataloader_cfg["num_workers"],
+            dataloader_cfg["pin_memory"],
+            dataloader_cfg["persistent_workers"],
+            dataloader_cfg["prefetch_factor"],
+        )
+        return dataloader_cfg
+
+    def _ensure_evaluation_trainer(self) -> None:
+        """Create a minimal trainer for evaluate-only mode if not already available."""
+        if self.trainer is not None:
+            return
+
+        if self.criterion is None:
+            self.logger.warning(
+                "No criterion configured for evaluation; falling back to torch.nn.MSELoss()."
+            )
+            self.criterion = nn.MSELoss()
+
+        if self.optimizer is None:
+            self.logger.warning(
+                "No optimizer configured for evaluation; creating a temporary Adam optimizer."
+            )
+            self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3)
+
+        from .DL.Trainer import Trainer
+        self.trainer = Trainer(
+            self.model,
+            self.criterion,
+            self.optimizer,
+            self.device,
+            checkpoint_dir=self.config.get("train", {}).get("checkpoint_dir", "checkpoints"),
+        )
     
     def _validate_minimal_config(self):
         """
@@ -571,6 +750,11 @@ class DgsCLI:
     
     def _execute_train(self):
         """Execute training mode."""
+        if "train" not in self.config:
+            raise RuntimeError("Training mode requires 'train' configuration")
+
+        dataloader_config = self._build_dataloader_config()
+
         # Prepare data
         self.logger.info("Preparing data for training...")
         train_loader, val_loader, test_loader = preprocess_data_for_train(
@@ -583,7 +767,8 @@ class DgsCLI:
             test_chroms=self.config["data"].get("test_chroms", ["chr8"]),
             val_chroms=self.config["data"].get("val_chroms", ["chr7"]),
             strand_aware=self.config["data"].get("strand_aware", True),
-            batch_size=self.config["data"].get("batch_size", 4)
+            batch_size=self.config["data"].get("batch_size", 4),
+            dataloader_config=dataloader_config,
         )
         self.train_loader = train_loader
         self.val_loader = val_loader
@@ -591,6 +776,19 @@ class DgsCLI:
 
         # Train model
         self.logger.info("Training model...")
+        trainer_args = dict(self.config["train"].get("trainer_args", {}))
+        trainer_args.setdefault("use_amp", self.config["train"].get("use_amp", False))
+        trainer_args.setdefault("amp_dtype", self.config["train"].get("amp_dtype", "float16"))
+        trainer_args.setdefault(
+            "non_blocking",
+            self.config["train"].get("non_blocking", self.config["data"].get("pin_memory", False)),
+        )
+        self.logger.info(
+            "Trainer acceleration options: use_amp=%s, amp_dtype=%s, non_blocking=%s",
+            trainer_args.get("use_amp"),
+            trainer_args.get("amp_dtype"),
+            trainer_args.get("non_blocking"),
+        )
         self.model, self.trainer = execute_dgs_train(
             self.train_loader,
             self.val_loader,
@@ -605,18 +803,26 @@ class DgsCLI:
             checkpoint_dir=self.config["train"].get("checkpoint_dir", "checkpoints"), 
             use_tensorboard=self.config["train"].get("use_tensorboard", False),
             tensorboard_dir=self.config["train"].get("tensorboard_dir", "tensorboard"), 
-            **self.config["train"].get("trainer_args", {})
+            **trainer_args,
         )
         self.logger.info("Training completed.")
 
     def _execute_evaluate(self):
-        """Execute evaluation mode."""        
-        if not hasattr(self, "trainer"):
-            raise RuntimeError("No trained model available for evaluation, \n \
-                               please train the model first, or specify the model in config")
+        """Execute evaluation mode."""
+        evaluate_config = self.config.get("evaluate", {})
+        checkpoint_path = evaluate_config.get("checkpoint_path")
+
+        if self.trainer is None and checkpoint_path is None:
+            raise RuntimeError(
+                "No trained model available for evaluation. "
+                "Please train first or set evaluate.checkpoint_path."
+            )
+
+        # Evaluate-only mode can build a minimal trainer when checkpoint is provided.
+        self._ensure_evaluation_trainer()
         
         self.logger.info("Preparing data for evaluation...")
-        if not hasattr(self, "test_loader"):
+        if self.test_loader is None:
             self.test_loader = preprocess_data_for_evaluate(
                 self.config["data"]["genome_path"],
                 self.config["data"]["target_tasks"],
@@ -625,13 +831,15 @@ class DgsCLI:
                 test_size=self.config["data"].get("test_size", 0.2),
                 test_chroms=self.config["data"].get("test_chroms", ["chr8"]),
                 strand_aware=self.config["data"].get("strand_aware", True),
-                batch_size=self.config["data"].get("batch_size", 4)
+                batch_size=self.config["data"].get("batch_size", 4),
+                dataloader_config=self._build_dataloader_config(),
             )
         
         self.logger.info("Evaluating model...")
         self.metrics = execute_dgs_evaluate(
             self.test_loader, 
-            self.trainer
+            self.trainer,
+            checkpoint_path=checkpoint_path,
         )
 
         # save metrics
@@ -640,12 +848,12 @@ class DgsCLI:
     
     def _execute_explain(self):
         """Execute explanation mode."""
-        if not hasattr(self, "model"):
+        if self.model is None:
             raise RuntimeError("No model available for explanation")
         explain_config = self.config.get("explain", {})
         
         self.logger.info("Preparing data for explanation...")
-        if not hasattr(self, "explain_data_loader"):
+        if self.explain_data_loader is None:
             self.explain_data_loader = preprocess_data_for_explain(
                 self.config["data"]["genome_path"],
                 self.config["data"]["intervals_path"],
@@ -653,7 +861,8 @@ class DgsCLI:
                 test_size=self.config["data"].get("test_size", 0.2),
                 test_chroms=self.config["data"].get("test_chroms", ["chr8"]),
                 strand_aware=self.config["data"].get("strand_aware", True),
-                batch_size=self.config["data"].get("batch_size", 4)
+                batch_size=self.config["data"].get("batch_size", 4),
+                dataloader_config=self._build_dataloader_config(),
             )
         
         self.logger.info("Executing explanation...")
@@ -663,17 +872,18 @@ class DgsCLI:
             target=explain_config.get("target", 0),
             device=self.device,
             output_dir=explain_config.get("output_dir", explain_config.get("motif_results", "motif_results")), 
-            max_seqlets=explain_config.get("max_seqlets", 2000)
+            max_seqlets=explain_config.get("max_seqlets", 2000),
+            batch_size=explain_config.get("batch_size"),
         )
         self.logger.info("Explanation completed.")
     
     def _execute_predict(self):
         """Execute prediction mode."""
-        if not hasattr(self, "model"):
+        if self.model is None:
             raise RuntimeError("No model available for prediction")
 
         self.logger.info("Preparing data for prediction...")
-        if not hasattr(self, "predict_data_loader"):
+        if self.vds is None or self.variant_df is None:
             self.vds, self.variant_df  = preprocess_data_for_predict(
                 self.config["data"]["genome_path"],
                 self.config["predict"]["vcf_path"],
@@ -681,13 +891,16 @@ class DgsCLI:
             )
         
         self.logger.info("Predicting variants...")
+        predict_dataloader_config = self._build_predict_dataloader_config()
         self.result_df = execute_dgs_predict(
             self.model,
             self.vds,
             self.variant_df,
             metric_func=self.config["predict"].get("metric_func", "diff"),
             mean_by_tasks=self.config["predict"].get("mean_by_tasks", True),
-            device=self.device
+            device=self.device,
+            batch_size=self.config["predict"].get("batch_size"),
+            dataloader_config=predict_dataloader_config,
         )
 
         save_path = os.path.join(self.config["output_dir"], "variant_predictions.csv")

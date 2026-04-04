@@ -1,46 +1,22 @@
-"""
-Deep Learning Model Trainer Module for DGS
+"""Model training loops and checkpoint management.
 
-This module provides a comprehensive training framework for deep learning models in genomic sequence analysis.
-It includes classes and utilities for model training, evaluation, and monitoring.
+Purpose:
+    Provide a reusable trainer for DGS model optimization and validation.
 
-Key Components:
-1. Trainer Class:
-   - Manages model training and validation loops
-   - Implements early stopping and learning rate scheduling
-   - Handles checkpointing and model state management
-   - Provides metrics tracking and visualization
+Main Responsibilities:
+    - Run train/validate/predict loops with optional AMP and gradient clipping.
+    - Save and load checkpoints including model, optimizer, and scaler states.
+    - Track losses/metrics and expose progress reporting hooks.
 
-2. Training Utilities:
-   - Batch preparation and device management
-   - Gradient clipping and optimization
-   - TensorBoard integration for monitoring
-   - Learning rate visualization
-
-3. Metrics Management:
-   - Training and validation metrics tracking
-   - Early stopping based on validation performance
-   - Custom metric computation for genomic tasks
-   - Visualization of training progress
-
-Usage Example:
-    trainer = Trainer(
-        model=model,
-        criterion=loss_fn,
-        optimizer=optimizer,
-        device=device,
-        patience=10
-    )
-    metrics = trainer.train(
-        train_loader=train_loader,
-        val_loader=val_loader,
-        epochs=100,
-        early_stopping=True
-    )
+Key Runtime Notes:
+    - AMP is only enabled on CUDA when `use_amp=True`.
+    - Batch-level failures are logged; all-failed epochs raise explicit errors.
+    - Checkpoint loading supports model-only restore for evaluation workflows.
 """
 
 import logging
 import time
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Dict, Any, Optional, Union, List, Tuple, Callable
 from dataclasses import dataclass, field
@@ -100,6 +76,7 @@ class TrainerState:
     best_val_loss: float = float('inf')
     model_state: Dict = field(default_factory=dict)
     optimizer_state: Dict = field(default_factory=dict)
+    scaler_state: Dict = field(default_factory=dict)
     metrics: TrainerMetrics = field(default_factory=TrainerMetrics)
 
 class Trainer:
@@ -137,7 +114,10 @@ class Trainer:
         metric_sample: int = 100,
         patience: int = 10,
         use_tensorboard: bool = False,
-        tensorboard_dir: Optional[Union[str, Path]] = None
+        tensorboard_dir: Optional[Union[str, Path]] = None,
+        use_amp: bool = False,
+        amp_dtype: Union[str, torch.dtype] = "float16",
+        non_blocking: bool = False,
     ):
         """Initialize trainer.
         
@@ -155,8 +135,12 @@ class Trainer:
             patience: Early stopping patience
             use_tensorboard: Whether to use tensorboard
             tensorboard_dir: Tensorboard log directory
+            use_amp: Whether to enable mixed precision on CUDA
+            amp_dtype: autocast dtype, e.g. "float16" or "bfloat16"
+            non_blocking: Use non_blocking host->device transfers when possible
         """
         self.device = device
+        self.non_blocking = bool(non_blocking)
         
         # Move model and criterion to device
         self.model = model.to(device)
@@ -179,6 +163,19 @@ class Trainer:
         self.evaluate_training = evaluate_training
         self.metric_sample = metric_sample
         self.patience = patience
+
+        # AMP settings (kept opt-in for backward compatibility)
+        self.amp_dtype = self._resolve_amp_dtype(amp_dtype)
+        self.use_amp = bool(use_amp and self.device.type == "cuda")
+        if use_amp and self.device.type != "cuda":
+            logger.info("AMP requested but disabled because device is not CUDA")
+        self.scaler = torch.cuda.amp.GradScaler(enabled=self.use_amp)
+        logger.info(
+            "Trainer runtime options: use_amp=%s, amp_dtype=%s, non_blocking=%s",
+            self.use_amp,
+            self.amp_dtype,
+            self.non_blocking,
+        )
         
         # Setup directories
         self.checkpoint_dir = Path(checkpoint_dir or "checkpoints")
@@ -193,6 +190,36 @@ class Trainer:
         # Initialize state
         self.state = TrainerState()
         self.metrics = TrainerMetrics()
+
+    @staticmethod
+    def _resolve_amp_dtype(amp_dtype: Union[str, torch.dtype]) -> torch.dtype:
+        """Map user-provided AMP dtype into torch dtype."""
+        if isinstance(amp_dtype, torch.dtype):
+            return amp_dtype
+
+        dtype_map = {
+            "float16": torch.float16,
+            "fp16": torch.float16,
+            "bfloat16": torch.bfloat16,
+            "bf16": torch.bfloat16,
+        }
+        if isinstance(amp_dtype, str):
+            key = amp_dtype.lower()
+            if key in dtype_map:
+                return dtype_map[key]
+        raise ValueError(
+            "Invalid amp_dtype. Supported values are 'float16', 'fp16', 'bfloat16', 'bf16', or torch.dtype."
+        )
+
+    def _autocast_context(self):
+        """Return an autocast context only when AMP is enabled."""
+        if self.use_amp:
+            return torch.autocast(
+                device_type=self.device.type,
+                dtype=self.amp_dtype,
+                enabled=True,
+            )
+        return nullcontext()
         
     def _prepare_batch(self, data, target):
         """Prepare batch data by ensuring all inputs are tensors on the correct device.
@@ -209,10 +236,10 @@ class Trainer:
         """
         def _to_tensor(x, dtype=None):
             if isinstance(x, torch.Tensor):
-                x = x.to(self.device)
+                x = x.to(self.device, non_blocking=self.non_blocking)
                 return x if dtype is None else x.to(dtype)
             if isinstance(x, np.ndarray):
-                x = torch.from_numpy(x).to(self.device)
+                x = torch.from_numpy(x).to(self.device, non_blocking=self.non_blocking)
                 return x if dtype is None else x.to(dtype)
             x = torch.tensor(x, device=self.device)
             return x if dtype is None else x.to(dtype)
@@ -262,17 +289,19 @@ class Trainer:
         # Update state
         self.state.model_state = model_state
         self.state.optimizer_state = optimizer_state
+        self.state.scaler_state = self.scaler.state_dict() if self.use_amp else {}
         self.state.metrics = self.metrics
         
         # Save checkpoint
         torch.save(self.state, path)
         logger.info(f"Saved checkpoint to {path}")
         
-    def load_checkpoint(self, path: Union[str, Path]) -> None:
+    def load_checkpoint(self, path: Union[str, Path], load_optimizer: bool = True) -> None:
         """Load training checkpoint.
         
         Args:
             path: Path to checkpoint file
+            load_optimizer: Whether to restore optimizer/scaler states.
             
         Raises:
             FileNotFoundError: If checkpoint file not found
@@ -292,13 +321,16 @@ class Trainer:
             
             # Restore model and optimizer
             self.model.load_state_dict(checkpoint.model_state)
-            self.optimizer.load_state_dict(checkpoint.optimizer_state)
-            
-            # Ensure optimizer state is on correct device
-            for state in self.optimizer.state.values():
-                for k, v in state.items():
-                    if isinstance(v, torch.Tensor):
-                        state[k] = v.to(self.device)
+            if load_optimizer:
+                self.optimizer.load_state_dict(checkpoint.optimizer_state)
+                if self.use_amp and getattr(checkpoint, "scaler_state", None):
+                    self.scaler.load_state_dict(checkpoint.scaler_state)
+                
+                # Ensure optimizer state is on correct device
+                for state in self.optimizer.state.values():
+                    for k, v in state.items():
+                        if isinstance(v, torch.Tensor):
+                            state[k] = v.to(self.device)
             
             logger.info(f"Loaded checkpoint from {path}")
             
@@ -332,6 +364,8 @@ class Trainer:
         """
         self.model.train()
         total_loss = 0
+        success_batches = 0
+        failed_batches = 0
         
         with tqdm(train_loader, desc=f"Epoch {epoch}") as pbar:
             for batch_idx, (data, target) in enumerate(pbar):
@@ -341,23 +375,35 @@ class Trainer:
                     
                     # Forward pass (handle list of inputs if needed)
                     self.optimizer.zero_grad()
-                    output = self.model(data)
-                    
-                    # Handle loss computation with multiple targets if needed
-                    loss = self.criterion(output, target)
-                    
+                    with self._autocast_context():
+                        output = self.model(data)
+                        # Handle loss computation with multiple targets if needed
+                        loss = self.criterion(output, target)
+
                     # Backward pass
-                    loss.backward()
-                    if self.clip_grad_norm:
-                        torch.nn.utils.clip_grad_norm_(
-                            self.model.parameters(),
-                            self.max_grad_norm
-                        )
-                    self.optimizer.step()
+                    if self.use_amp:
+                        self.scaler.scale(loss).backward()
+                        if self.clip_grad_norm:
+                            self.scaler.unscale_(self.optimizer)
+                            torch.nn.utils.clip_grad_norm_(
+                                self.model.parameters(),
+                                self.max_grad_norm
+                            )
+                        self.scaler.step(self.optimizer)
+                        self.scaler.update()
+                    else:
+                        loss.backward()
+                        if self.clip_grad_norm:
+                            torch.nn.utils.clip_grad_norm_(
+                                self.model.parameters(),
+                                self.max_grad_norm
+                            )
+                        self.optimizer.step()
                     
                     # Update metrics
                     total_loss += loss.item()
-                    avg_loss = total_loss / (batch_idx + 1)
+                    success_batches += 1
+                    avg_loss = total_loss / success_batches
                     
                     # Update progress bar
                     pbar.set_postfix(loss=f"{avg_loss:.4f}")
@@ -374,9 +420,22 @@ class Trainer:
                     
                 except Exception as e:
                     logger.error(f"Error in training batch {batch_idx}: {e}")
+                    failed_batches += 1
                     continue
-                    
-        avg_loss = total_loss / len(train_loader)
+
+        if success_batches == 0:
+            raise RuntimeError(
+                f"All training batches failed at epoch {epoch} (failed={failed_batches})."
+            )
+        if failed_batches > 0:
+            logger.warning(
+                "Epoch %s completed with partial failures: success_batches=%s, failed_batches=%s",
+                epoch,
+                success_batches,
+                failed_batches,
+            )
+
+        avg_loss = total_loss / success_batches
         self.metrics.train_losses.append(avg_loss)
         
         return avg_loss
@@ -410,6 +469,8 @@ class Trainer:
         total_loss = 0
         predictions = []
         targets = []
+        success_batches = 0
+        failed_batches = 0
         
         with torch.no_grad():
             for data, target in val_loader:
@@ -418,29 +479,45 @@ class Trainer:
                     data, target = self._prepare_batch(data, target)
                     
                     # Forward pass
-                    output = self.model(data)
-                    loss = self.criterion(output, target)
+                    with self._autocast_context():
+                        output = self.model(data)
+                        loss = self.criterion(output, target)
                     
                     # Store results
                     total_loss += loss.item()
+                    success_batches += 1
                     if return_predictions:
                         predictions.append(output.cpu())
                         targets.append(target.cpu())
                         
                 except Exception as e:
                     logger.error(f"Error in validation: {e}")
+                    failed_batches += 1
                     continue
-                    
+
+        if success_batches == 0:
+            raise RuntimeError(
+                f"All validation batches failed (failed={failed_batches})."
+            )
+        if failed_batches > 0:
+            logger.warning(
+                "Validation completed with partial failures: success_batches=%s, failed_batches=%s",
+                success_batches,
+                failed_batches,
+            )
+
         # Calculate metrics
-        avg_loss = total_loss / len(val_loader)
+        avg_loss = total_loss / success_batches
         self.metrics.val_losses.append(avg_loss)
         
         if return_predictions:
             predictions = torch.cat(predictions)
             targets = torch.cat(targets)
             metric = self.compute_metric(predictions, targets)
+            self.metrics.val_metrics.append(metric)
             return avg_loss, metric, predictions, targets
             
+        self.metrics.val_metrics.append(0.0)
         return avg_loss, 0.0
             
     def train(
@@ -583,10 +660,13 @@ class Trainer:
                         data = data[0]
                     
                     # Move data to device
-                    data = data.to(self.device)
+                    if isinstance(data, np.ndarray):
+                        data = torch.from_numpy(data)
+                    data = data.to(self.device, non_blocking=self.non_blocking)
                     
                     # Forward pass
-                    output = self.model(data)
+                    with self._autocast_context():
+                        output = self.model(data)
                     
                     # Store results
                     predictions.append(output.cpu())
@@ -750,4 +830,3 @@ def plot_learning_rate(
     
     plt.savefig(save_path)
     plt.close()
-

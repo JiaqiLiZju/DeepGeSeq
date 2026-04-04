@@ -1,32 +1,17 @@
-"""
-Genomic Dataset Module
+"""Dataset wrappers used by DGS training and inference pipelines.
 
-This module implements PyTorch dataset classes for genomic sequence analysis:
+Purpose:
+    Provide dataset classes that expose one-hot DNA inputs and optional labels.
 
-Key Components:
-1. Base Dataset Classes:
-   - SeqDataset: Basic sequence dataset
-   - GenomicDataset: Multi-task genomic dataset
-   - Custom dataset implementations
+Main Responsibilities:
+    - Build sequence-only datasets (`SeqDataset`) from intervals and genome FASTA.
+    - Build supervised datasets (`GenomicDataset`) that pair sequences and targets.
+    - Create PyTorch dataloaders with backward-compatible worker/runtime options.
 
-2. Data Processing Features:
-   - Efficient sequence extraction
-   - Automatic one-hot encoding
-   - Strand-aware processing
-   - Batch generation
-
-3. Integration Support:
-   - PyTorch DataLoader compatibility
-   - Multi-task learning frameworks
-   - Custom data augmentation
-   - Memory-efficient operations
-
-The module provides a flexible foundation for building genomic
-deep learning pipelines with focus on:
-- Scalability for large datasets
-- Memory efficiency
-- Processing speed
-- Research reproducibility
+Key Runtime Notes:
+    - Single-sample sequence shape is `(sequence_length, 4)` before collation.
+    - Labels are cast to `float32` in supervised dataset outputs.
+    - Dataloader worker options are only enabled when `num_workers > 0`.
 """
 
 import numpy as np
@@ -58,10 +43,10 @@ class SeqDataset(Dataset):
     - Memory-efficient operations
     
     Attributes:
-        intervals: Genomic intervals for sequence extraction
-        genome: Reference genome object
-        strand_aware: Whether to respect strand information
-        seqs: Cached sequence objects
+        intervals: Genomic intervals for sequence extraction.
+        genome: Reference genome object.
+        strand_aware: Whether to respect strand information.
+        seqs: Cached sequence objects.
         
     Example:
         >>> genome = Genome("hg38.fa")
@@ -87,7 +72,7 @@ class SeqDataset(Dataset):
         """Extract DNA sequences from genome.
         
         Returns:
-            List of DNASeq objects corresponding to intervals
+            List of `DNASeq` objects corresponding to intervals.
             
         Note:
             This method caches sequences to avoid repeated
@@ -103,11 +88,11 @@ class SeqDataset(Dataset):
         """Get one-hot encoded sequence by index.
         
         Args:
-            idx: Index of sequence to retrieve
+            idx: Index of sequence to retrieve.
             
         Returns:
-            One-hot encoded sequence as numpy array
-            Shape: (sequence_length, 4)
+            One-hot encoded sequence as a numpy array with shape
+            `(sequence_length, 4)`.
         """
         seq = self.seqs[idx]
         return one_hot_encode(seq.sequence)
@@ -166,12 +151,12 @@ class GenomicDataset(SeqDataset):
         """Get sequence and labels by index.
         
         Args:
-            idx: Index of sample to retrieve
+            idx: Index of sample to retrieve.
             
         Returns:
-            tuple: (sequence, labels)
-                - sequence: One-hot encoded sequence
-                - labels: Associated label array
+            Tuple `(sequence, labels)` where:
+                - `sequence` has shape `(sequence_length, 4)`.
+                - `labels` contains task values for the sample.
         """
         seq = self.seqs[idx]
         label = self.labels[idx]
@@ -181,6 +166,10 @@ def create_dataloader(
     dataset: Union[SeqDataset, GenomicDataset],
     batch_size: Optional[int] = 4,
     shuffle: bool = True,
+    num_workers: int = 0,
+    pin_memory: bool = False,
+    persistent_workers: bool = False,
+    prefetch_factor: Optional[int] = None,
     **kwargs
 ) -> torch.utils.data.DataLoader:
     """Create PyTorch DataLoader for genomic datasets.
@@ -195,10 +184,14 @@ def create_dataloader(
         dataset: Input genomic dataset
         batch_size: Number of samples per batch
         shuffle: Whether to shuffle samples
+        num_workers: Number of subprocesses for loading data
+        pin_memory: Whether to pin memory for faster host->device transfer
+        persistent_workers: Keep workers alive between epochs
+        prefetch_factor: Number of batches preloaded per worker
         **kwargs: Additional DataLoader arguments
         
     Returns:
-        PyTorch DataLoader configured for the dataset
+        PyTorch `DataLoader` configured for the dataset.
         
     Example:
         >>> dataset = GenomicDataset(intervals, genome, targets)
@@ -206,9 +199,17 @@ def create_dataloader(
         >>> for sequences, labels in loader:
         ...     # Training loop
     """
+    dataloader_kwargs = dict(kwargs)
+    dataloader_kwargs["num_workers"] = int(num_workers)
+    dataloader_kwargs["pin_memory"] = bool(pin_memory)
+    if dataloader_kwargs["num_workers"] > 0:
+        dataloader_kwargs["persistent_workers"] = bool(persistent_workers)
+        if prefetch_factor is not None:
+            dataloader_kwargs["prefetch_factor"] = int(prefetch_factor)
+
     return torch.utils.data.DataLoader(
         dataset,
         batch_size=batch_size,
         shuffle=shuffle,
-        **kwargs
+        **dataloader_kwargs
     )

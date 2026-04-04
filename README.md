@@ -17,7 +17,7 @@ DeepGeSeq (DGS) is a deep learning toolkit for genomic sequence analysis. It pro
 ### Requirements
 
 - Python >= 3.7
-- PyTorch environment (CPU or CUDA)
+- PyTorch >= 1.10.1 (CPU or CUDA)
 
 ### Install from source
 
@@ -47,10 +47,22 @@ pip install -e ".[all]"
 
 `explain` mode depends on additional tools that are not guaranteed by base install:
 
-- `tangermeme` (Python package)
+- `tangermeme` (Python package, installed by `pip install -e ".[explain]"`)
 - `modisco` command line tool (must be available in `PATH`)
 
-If these are missing, explanation/motif commands will fail at runtime.
+If either dependency is missing, explanation/motif commands fail at runtime.
+
+## Documentation (from Docstrings)
+
+Build API documentation from DGS docstrings using Sphinx:
+
+```bash
+python DGS/tests/docstring_audit.py
+pip install -r docs/requirements.txt
+sphinx-build -b html docs/source docs/build/html
+```
+
+Then open `docs/build/html/index.html` in your browser.
 
 ## Quick Start (CLI)
 
@@ -75,6 +87,22 @@ dgs train --config config.json
 dgs evaluate --config config.json
 dgs explain --config config.json
 dgs predict --config config.json
+```
+
+### 4. Optional global runtime flags
+
+These flags are supported by the CLI parser and must be placed before the subcommand:
+
+- `--verbose {0,1,2}`
+- `--gpu <id>` (`-1` forces CPU)
+- `--seed <int>`
+- `--benchmark` / `--no-benchmark`
+
+Examples:
+
+```bash
+dgs --gpu 0 --seed 42 --benchmark run --config config.json
+dgs --gpu -1 --no-benchmark evaluate --config config.json
 ```
 
 ## Configuration Notes
@@ -137,6 +165,69 @@ For optimizer/loss settings, use nested `params` fields:
 - `train.criterion.params`
 
 This matches the current CLI initialization behavior.
+
+### Legacy config compatibility
+
+Legacy flat keys are still accepted and normalized at load time:
+
+- `train.optimizer.lr` -> `train.optimizer.params.lr`
+- `train.criterion.weight` -> `train.criterion.params.weight`
+
+For new configs, prefer explicit nested `params`.
+
+### Evaluate-only checkpoint loading
+
+You can run `evaluate` without running `train` in the same process by providing:
+
+- `evaluate.checkpoint_path`
+
+`evaluate` still needs regular `data`/`model` settings so DGS can rebuild the
+dataset and model. Add this block to an otherwise complete config:
+
+```json
+{
+  "modes": ["evaluate"],
+  "evaluate": {
+    "checkpoint_path": "checkpoints/best_model.pt"
+  }
+}
+```
+
+### Performance tuning (optional)
+
+These options are backward-compatible and disabled by default:
+
+- Data loading:
+  - `data.num_workers`
+  - `data.pin_memory`
+  - `data.persistent_workers`
+  - `data.prefetch_factor`
+- Training acceleration:
+  - `train.use_amp`
+  - `train.amp_dtype`
+  - `train.non_blocking`
+- Variant prediction batching:
+  - `predict.batch_size`
+  - `predict.num_workers`
+  - `predict.pin_memory`
+  - `predict.persistent_workers`
+  - `predict.prefetch_factor`
+
+`predict.*workers`/`prefetch_factor` are applied when batched prediction is
+enabled (`predict.batch_size > 1`).
+
+### Troubleshooting
+
+- `Explain mode requires optional dependency 'tangermeme'`:
+  - Install: `pip install -e ".[explain]"` (or `pip install tangermeme`).
+- `Explain mode requires the 'modisco' CLI in PATH for motif workflows.`:
+  - Install TF-MoDISco-lite and ensure `modisco` is resolvable in your shell.
+- `No trained model available for evaluation. Please train first or set evaluate.checkpoint_path.`:
+  - Add `evaluate.checkpoint_path` or include `train` in `modes`.
+- `Checkpoint not found: ...`:
+  - Verify the checkpoint file exists and the path is correct.
+- `Unknown model type '...'`:
+  - Use an exported model name from `DGS/Model/__init__.py` in `model.type`.
 
 ## Typical Inputs
 

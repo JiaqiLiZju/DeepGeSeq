@@ -2,8 +2,7 @@
 
 This module provides convolutional neural network architectures for genomic sequence analysis:
 
-Classes
--------
+Classes:
 CNN
     Basic Convolutional Neural Network model that extends BasicModel.
     Uses standard convolution layers for sequence processing.
@@ -36,8 +35,7 @@ class CNN(BasicModel):
     3. Decoder with linear transformation
     4. Task-specific predictor
 
-    Parameters
-    ----------
+    Args:
     output_size : int
         Size of the output layer (number of prediction targets)
     out_planes : int, optional
@@ -62,8 +60,7 @@ class CNN(BasicModel):
     tasktype : str, optional
         Type of task: 'regression' or 'classification' (default: 'regression')
 
-    Notes
-    -----
+    Notes:
     - Input sequences should be one-hot encoded with shape (batch_size, 4, sequence_length)
     - The model uses a fixed architecture with convolution -> pooling -> linear layers
     - Global average pooling is used to handle variable length sequences
@@ -74,6 +71,7 @@ class CNN(BasicModel):
                     bn=False, activation=nn.ReLU, activation_args={}, 
                     pool=nn.AvgPool1d, pool_args={'kernel_size': 3},
                     tasktype='regression'):
+        """Initialize `CNN`."""
         super().__init__()
         self.Embedding = BasicConvEmbed(out_planes=out_planes, 
                     kernel_size=kernel_size, in_planes=in_planes, conv_args=conv_args, 
@@ -98,8 +96,7 @@ class CAN(BasicModel):
     3. Decoder with linear transformation
     4. Task-specific predictor
 
-    Parameters
-    ----------
+    Args:
     output_size : int
         Size of the output layer (number of prediction targets)
     out_planes : int, optional
@@ -124,15 +121,13 @@ class CAN(BasicModel):
     tasktype : str, optional
         Type of task: 'regression' or 'classification' (default: 'regression')
 
-    Notes
-    -----
+    Notes:
     - Input sequences should be one-hot encoded with shape (batch_size, 4, sequence_length)
     - CBAM attention helps the model focus on important regions of the sequence
     - The model uses batch normalization by default for better training stability
     - Global average pooling is used to handle variable length sequences
 
-    References
-    ----------
+    References:
     .. [1] Woo, S., Park, J., Lee, J. Y., & Kweon, I. S. (2018). 
            CBAM: Convolutional Block Attention Module. 
            In Proceedings of the European Conference on Computer Vision (ECCV)
@@ -143,6 +138,7 @@ class CAN(BasicModel):
                     bn=True, activation=nn.ReLU, activation_args={}, 
                     pool=nn.AvgPool1d, pool_args={'kernel_size': 3},
                     tasktype='regression'):
+        """Initialize `CAN`."""
         super().__init__()
         self.Embedding = BasicConvEmbed(out_planes=out_planes, 
                     kernel_size=kernel_size, in_planes=in_planes, conv_args=conv_args, 

@@ -1,4 +1,13 @@
-# Enformer
+"""Enformer model and supporting building blocks.
+
+This module contains a PyTorch implementation of Enformer-style sequence
+modeling with relative positional attention and optional checkpointed
+transformer execution.
+
+Input conventions:
+    - Preferred tensor shape: `(batch, sequence_length, 4)` with one-hot DNA.
+    - Long-index sequence tensors are converted internally to one-hot encoding.
+"""
 import math
 import torch
 from torch import nn, einsum
@@ -16,15 +25,29 @@ TARGET_LENGTH = 1000
 # helpers
 
 def exists(val):
+    """Return whether a value is not `None`."""
     return val is not None
 
 def default(val, d):
+    """Return `val` when present, otherwise return default `d`."""
     return val if exists(val) else d
 
 def map_values(fn, d):
+    """Apply `fn` to each value in dictionary `d`."""
     return {key: fn(values) for key, values in d.items()}
 
 def exponential_linspace_int(start, end, num, divisible_by = 1):
+    """Create an exponentially spaced integer sequence.
+
+    Args:
+        start: Start value.
+        end: End value.
+        num: Number of generated values.
+        divisible_by: Round each value to a multiple of this number.
+
+    Returns:
+        List of integer values.
+    """
     def _round(x):
         return int(round(x / divisible_by) * divisible_by)
 
@@ -32,14 +55,17 @@ def exponential_linspace_int(start, end, num, divisible_by = 1):
     return [_round(start * base**i) for i in range(num)]
 
 def log(t, eps = 1e-20):
+    """Numerically stable logarithm with lower clamp."""
     return torch.log(t.clamp(min = eps))
 
 # losses and metrics
 
 def poisson_loss(pred, target):
+    """Compute Poisson loss used by Enformer output heads."""
     return (pred - target * log(pred)).mean()
 
 def pearson_corr_coef(x, y, dim = 1, reduce_dims = (-1,)):
+    """Compute mean Pearson correlation coefficient over selected dimensions."""
     x_centered = x - x.mean(dim = dim, keepdim = True)
     y_centered = y - y.mean(dim = dim, keepdim = True)
     return F.cosine_similarity(x_centered, y_centered, dim = dim).mean(dim = reduce_dims)
@@ -47,6 +73,7 @@ def pearson_corr_coef(x, y, dim = 1, reduce_dims = (-1,)):
 # relative positional encoding functions
 
 def get_positional_features_exponential(positions, features, seq_len, min_half_life = 3.):
+    """Generate exponential relative-position features."""
     max_range = math.log(seq_len) / math.log(2.)
     half_life = 2 ** torch.linspace(min_half_life, max_range, features, device = positions.device)
     half_life = half_life[None, ...]
@@ -54,16 +81,19 @@ def get_positional_features_exponential(positions, features, seq_len, min_half_l
     return torch.exp(-math.log(2.) / half_life * positions)
 
 def get_positional_features_central_mask(positions, features, seq_len):
+    """Generate central-mask relative-position features."""
     center_widths = 2 ** torch.arange(1, features + 1, device = positions.device).float()
     center_widths = center_widths - 1
     return (center_widths[None, ...] > positions.abs()[..., None]).float()
 
 def gamma_pdf(x, concentration, rate):
+    """Evaluate Gamma probability density values."""
     log_unnormalized_prob = torch.xlogy(concentration - 1., x) - rate * x
     log_normalization = (torch.lgamma(concentration) - concentration * torch.log(rate))
     return torch.exp(log_unnormalized_prob - log_normalization)
 
 def get_positional_features_gamma(positions, features, seq_len, stddev = None, start_mean = None, eps = 1e-8):
+    """Generate gamma-distribution relative-position features."""
     if not exists(stddev):
         stddev = seq_len / (2 * features)
 
@@ -80,6 +110,19 @@ def get_positional_features_gamma(positions, features, seq_len, stddev = None, s
     return outputs
 
 def get_positional_embed(seq_len, feature_size, device):
+    """Build concatenated relative positional embeddings.
+
+    Args:
+        seq_len: Sequence length used by attention.
+        feature_size: Number of positional feature channels.
+        device: Torch device used for tensor creation.
+
+    Returns:
+        Positional embedding tensor with signed feature pairs.
+
+    Raises:
+        ValueError: If `feature_size` is incompatible with feature components.
+    """
     distances = torch.arange(-seq_len + 1, seq_len, device = device)
 
     feature_functions = [
@@ -104,6 +147,7 @@ def get_positional_embed(seq_len, feature_size, device):
     return embeddings
 
 def relative_shift(x):
+    """Apply relative-shift transform for relative attention logits."""
     to_pad = torch.zeros_like(x[..., :1])
     x = torch.cat((to_pad, x), dim = -1)
     _, h, t1, t2 = x.shape
@@ -115,25 +159,45 @@ def relative_shift(x):
 # classes
 
 class Residual(nn.Module):
+    """Residual wrapper that adds function output to the input tensor."""
+
     def __init__(self, fn):
+        """Initialize residual wrapper.
+
+        Args:
+            fn: Module or callable applied before residual addition.
+        """
         super().__init__()
         self.fn = fn
 
     def forward(self, x, **kwargs):
+        """Apply wrapped function and add identity shortcut."""
         return self.fn(x, **kwargs) + x
 
 class GELU(nn.Module):
+    """Approximate GELU activation used in the original Enformer code."""
+
     def forward(self, x):
+        """Apply activation to input tensor."""
         return torch.sigmoid(1.702 * x) * x
 
 class AttentionPool(nn.Module):
+    """Attention-based local pooling for 1D sequence features."""
+
     def __init__(self, dim, pool_size = 2):
+        """Initialize attention pooling module.
+
+        Args:
+            dim: Channel dimension of input feature map.
+            pool_size: Number of neighboring positions to pool.
+        """
         super().__init__()
         self.pool_size = pool_size
         self.pool_fn = Rearrange('b d (n p) -> b d n p', p = 2)
         self.to_attn_logits = nn.Parameter(torch.eye(dim))
 
     def forward(self, x):
+        """Pool adjacent positions with learned attention weights."""
         b, _, n = x.shape
         remainder = n % self.pool_size
         needs_padding = remainder > 0
@@ -155,11 +219,23 @@ class AttentionPool(nn.Module):
         return (x * attn).sum(dim = -1)
 
 class TargetLengthCrop(nn.Module):
+    """Center-crop sequence axis to a target output length."""
+
     def __init__(self, target_length):
+        """Initialize cropping module.
+
+        Args:
+            target_length: Final output length. `-1` disables cropping.
+        """
         super().__init__()
         self.target_length = target_length
 
     def forward(self, x):
+        """Crop sequence dimension around center position.
+
+        Raises:
+            ValueError: If requested target length is larger than sequence length.
+        """
         seq_len, target_len = x.shape[-2], self.target_length
 
         if target_len == -1:
@@ -176,6 +252,7 @@ class TargetLengthCrop(nn.Module):
         return x[:, left:right]
 
 def ConvBlock(dim, dim_out = None, kernel_size = 1):
+    """Create a batchnorm-GELU-conv block used by Enformer trunk."""
     return nn.Sequential(
         nn.BatchNorm1d(dim),
         GELU(),
@@ -185,18 +262,29 @@ def ConvBlock(dim, dim_out = None, kernel_size = 1):
 # for replacing the batchnorm resnet blocks with convnext blocks
 
 class LayerNorm(nn.Module):
+    """Channel-wise LayerNorm for `(batch, channels, length)` tensors."""
+
     def __init__(self, dim, eps = 1e-5):
+        """Initialize normalization parameters.
+
+        Args:
+            dim: Channel dimension size.
+            eps: Numerical stability constant.
+        """
         super().__init__()
         self.eps = eps
         self.g = nn.Parameter(torch.ones(1, dim, 1))
         self.b = nn.Parameter(torch.zeros(1, dim, 1))
 
     def forward(self, x):
+        """Normalize channel axis while preserving sequence axis."""
         var = torch.var(x, dim = 1, unbiased = False, keepdim = True)
         mean = torch.mean(x, dim = 1, keepdim = True)
         return (x - mean) / (var + self.eps).sqrt() * self.g + self.b
 
 class ConvNextBlock(nn.Module):
+    """Depthwise-convolutional residual block used as ConvNeXt-style variant."""
+
     def __init__(
         self,
         dim,
@@ -204,6 +292,14 @@ class ConvNextBlock(nn.Module):
         kernel_size = 7,
         ff_mult = 2
     ):
+        """Initialize ConvNeXt-like block.
+
+        Args:
+            dim: Input channel size.
+            dim_out: Output channel size. Defaults to `dim`.
+            kernel_size: Depthwise convolution kernel size.
+            ff_mult: Expansion factor for pointwise feed-forward stage.
+        """
         super().__init__()
         dim_out = default(dim_out, dim)
 
@@ -218,11 +314,14 @@ class ConvNextBlock(nn.Module):
         )
 
     def forward(self, x):
+        """Apply block and residual projection."""
         return self.net(x) + self.res_conv(x)
 
 # attention classes
 
 class Attention(nn.Module):
+    """Multi-head self-attention with relative positional encoding."""
+
     def __init__(
         self,
         dim,
@@ -234,6 +333,17 @@ class Attention(nn.Module):
         dropout = 0.,
         pos_dropout = 0.
     ):
+        """Initialize attention module.
+
+        Args:
+            dim: Embedding dimension.
+            num_rel_pos_features: Relative positional feature dimension.
+            heads: Number of attention heads.
+            dim_key: Per-head key dimension.
+            dim_value: Per-head value dimension.
+            dropout: Attention dropout probability.
+            pos_dropout: Positional feature dropout probability.
+        """
         super().__init__()
         self.scale = dim_key ** -0.5
         self.heads = heads
@@ -260,6 +370,14 @@ class Attention(nn.Module):
         self.attn_dropout = nn.Dropout(dropout)
 
     def forward(self, x):
+        """Run self-attention on sequence embeddings.
+
+        Args:
+            x: Input tensor with shape `(batch, seq_len, dim)`.
+
+        Returns:
+            Tensor with shape `(batch, seq_len, dim)`.
+        """
         n, h, device = x.shape[-2], self.heads, x.device
 
         q = self.to_q(x)
@@ -291,6 +409,8 @@ class Attention(nn.Module):
 # main class
 
 class Enformer(nn.Module):
+    """Enformer architecture with optional species-specific output heads."""
+
     def __init__(
         self,
         *,
@@ -306,6 +426,21 @@ class Enformer(nn.Module):
         use_checkpointing = False,
         use_convnext = False
     ):
+        """Initialize Enformer backbone and prediction heads.
+
+        Args:
+            dim: Main model width.
+            depth: Number of transformer blocks.
+            heads: Number of attention heads.
+            output_heads: Mapping from head name to output feature count.
+            target_length: Length after center-cropping.
+            attn_dim_key: Attention key dimension per head.
+            dropout_rate: Dropout used in feed-forward paths.
+            attn_dropout: Dropout applied to attention probabilities.
+            pos_dropout: Dropout applied to positional features.
+            use_checkpointing: Whether to checkpoint transformer blocks.
+            use_convnext: Whether to use ConvNeXt-style conv blocks.
+        """
         super().__init__()
         self.dim = dim
         half_dim = dim // 2
@@ -407,18 +542,29 @@ class Enformer(nn.Module):
         self.use_checkpointing = use_checkpointing
 
     def set_target_length(self, target_length):
+        """Update target crop length without rebuilding the model."""
         crop_module = self._trunk[-2]
         crop_module.target_length = target_length
 
     @property
     def trunk(self):
+        """Return the shared trunk module before output heads."""
         return self._trunk
 
     @property
     def heads(self):
+        """Return output-head module dictionary."""
         return self._heads
 
     def trunk_checkpointed(self, x):
+        """Run trunk with checkpointing over transformer layers.
+
+        Args:
+            x: Input tensor with shape `(batch, sequence_length, 4)`.
+
+        Returns:
+            Trunk embeddings with shape `(batch, target_length, dim * 2)`.
+        """
         x = self.stem(x)
         x = self.conv_tower(x)
         x = self.transformer[0](x)
@@ -440,6 +586,23 @@ class Enformer(nn.Module):
         return_only_embeddings = False,
         head = 'human'#None
     ):
+        """Run Enformer forward pass and optionally compute loss/metrics.
+
+        Args:
+            x: Input sequences as one-hot tensor, long-index tensor, or list.
+            target: Optional target tensor for direct loss/correlation output.
+            return_corr_coef: If True with target, return Pearson correlation.
+            return_embeddings: If True, return `(predictions, embeddings)`.
+            return_only_embeddings: If True, skip heads and return embeddings.
+            head: Selected output head key. If `None`, returns all heads.
+
+        Returns:
+            One of the following depending on flags:
+                - Embeddings tensor.
+                - Prediction tensor or dict of tensors.
+                - Scalar loss/correlation when `target` is provided.
+                - Tuple `(predictions, embeddings)` when requested.
+        """
         if isinstance(x, list):
             x = str_to_one_hot(x)
 

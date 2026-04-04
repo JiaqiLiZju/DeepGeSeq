@@ -1,25 +1,15 @@
-"""
-DGS (Deep Genomic Sequence Analysis Toolkit) - Main Module
+"""CLI entrypoint for DGS.
 
-This module serves as the main entry point for the DGS command line interface. It provides a comprehensive
-set of tools for genomic sequence analysis using deep learning approaches.
+This module builds the command parser, loads and normalizes configuration, and
+dispatches execution to the high-level CLI orchestrator.
 
-Key Features:
-    - Model Training: Train deep learning models on genomic sequences
-    - Model Evaluation: Assess model performance with various metrics
-    - Model Explanation: Generate interpretable explanations for model predictions
-    - Sequence Prediction: Make predictions on new genomic sequences
-    - Pipeline Execution: Run complete analysis pipelines with multiple modes
-
-Command Line Interface:
-    train    - Train a new model or continue training an existing one
-    evaluate - Evaluate model performance on test data
-    explain  - Generate model explanations and visualizations
-    predict  - Make predictions on new sequences
-    run      - Execute a complete analysis pipeline
-    config   - Generate or manage configuration files
-
-For detailed usage examples, use the --help flag with any command.
+Supported commands:
+    - `config`: Generate example config files.
+    - `run`: Execute configured modes in sequence.
+    - `train`: Run training only.
+    - `evaluate`: Run evaluation only.
+    - `explain`: Run motif/explanation workflow only.
+    - `predict`: Run variant effect prediction only.
 """
 
 import sys
@@ -29,23 +19,15 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 
 from . import setup_environment, __version__
-from .Config import ConfigManager, DgsConfig, ConfigError
+from .Config import ConfigManager, DgsConfig, ConfigError, normalize_config
 from .Cli import DgsCLI
 
 def create_parser() -> argparse.ArgumentParser:
-    """
-    Create and configure the main argument parser for the DGS command line interface.
-    
+    """Create the top-level command parser.
+
     Returns:
-        argparse.ArgumentParser: Configured argument parser with the following features:
-            - Global arguments for verbosity, GPU selection, and random seed
-            - Subcommands for different operational modes (train, evaluate, etc.)
-            - Configuration file management
-            - Example generation capabilities
-    
-    Example Usage:
-        parser = create_parser()
-        args = parser.parse_args()
+        Configured `argparse.ArgumentParser` with global runtime flags and
+        subcommands for each DGS execution mode.
     """
     parser = argparse.ArgumentParser(
         description="DGS: Deep Learning Toolkit for Genomics",
@@ -114,18 +96,21 @@ def create_parser() -> argparse.ArgumentParser:
     return parser
 
 def main():
-    """
-    Main entry point for the DGS command line interface.
-    
-    This function:
-    1. Parses command line arguments
-    2. Handles configuration file generation and loading
-    3. Sets up the execution environment (GPU/CPU, logging, random seed)
-    4. Initializes and executes the requested command
-    5. Provides error handling and user feedback
-    
-    The function will exit with status code 1 if any errors occur during execution,
-    such as configuration errors or runtime exceptions.
+    """Run the DGS command-line program.
+
+    Execution flow:
+        1. Parse command-line arguments.
+        2. Optionally generate example config files.
+        3. Load configuration and apply compatibility normalization.
+        4. Merge runtime overrides from command-line flags.
+        5. Set up environment and dispatch to `DgsCLI`.
+
+    Raises:
+        SystemExit: Exits with non-zero status on configuration/runtime errors.
+
+    Side effects:
+        Creates output/log directories, writes logs, and may trigger model
+        training/evaluation/explanation/prediction workflows depending on mode.
     """
     # Parse arguments
     parser = create_parser()
@@ -144,6 +129,7 @@ def main():
         # Load configuration
         config_manager = ConfigManager()
         config = config_manager.load_config(args.config)
+        config, inline_compat_notes = normalize_config(config)
         
         # Add command line arguments to config
         config["verbose"] = args.verbose
@@ -163,6 +149,12 @@ def main():
             config.get("benchmark", True),
             config["gpu"]
         )
+
+        compat_notes = []
+        compat_notes.extend(config_manager.get_compat_notes())
+        compat_notes.extend(inline_compat_notes)
+        for note in compat_notes:
+            logger.info(note)
         
         logger.info(f"Config: {config}")
         

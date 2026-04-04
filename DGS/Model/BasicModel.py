@@ -1,8 +1,7 @@
 """Basic Model in DGS.
 This module provides the foundational model architecture for deep genomic sequence analysis.
 
-Classes
--------
+Classes:
 BasicModel
     The general abstract base class for all models in DGS.
     Provides a standard architecture with Embedding, Encoder, Decoder, and Predictor components.
@@ -34,8 +33,7 @@ class BasicModel(nn.Module):
     The model expects input sequences in the shape (batch_size, 4, sequence_length)
     where 4 represents the one-hot encoded nucleotides (A,C,G,T).
 
-    Attributes
-    ----------
+    Attributes:
     Embedding : nn.Sequential
         Layer(s) for embedding sequence input into vectors
     Encoder : nn.Sequential
@@ -45,20 +43,19 @@ class BasicModel(nn.Module):
     Predictor : nn.Sequential
         Layer(s) for making final predictions
 
-    Notes
-    -----
+    Notes:
     - Input sequences should be one-hot encoded with shape (batch_size, 4, sequence_length)
     - If input has shape (batch_size, sequence_length, 4), it will be automatically transposed
     - The Encoder output is flattened if it has more than 2 dimensions
     - Debug-level logging is available for shape tracking through the network
 
-    Examples
-    --------
+    Examples:
     >>> model = BasicModel()
     >>> x = torch.randn(32, 4, 1000)  # batch of 32 sequences of length 1000
     >>> output = model(x)
     """
     def __init__(self):
+        """Initialize `BasicModel`."""
         super().__init__()
         self.Embedding = nn.Sequential()
         self.Encoder = nn.Sequential()
@@ -68,19 +65,16 @@ class BasicModel(nn.Module):
     def forward(self, x):
         """Forward pass of the model.
 
-        Parameters
-        ----------
+        Args:
         x : torch.Tensor
             Input tensor of shape (batch_size, 4, sequence_length) or 
             (batch_size, sequence_length, 4)
 
-        Returns
-        -------
+        Returns:
         torch.Tensor
             Model predictions with shape determined by the Predictor layer
 
-        Notes
-        -----
+        Notes:
         The forward pass follows these steps:
         1. Transpose input if needed to (batch_size, 4, sequence_length)
         2. Pass through Embedding layer

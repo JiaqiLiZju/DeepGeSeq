@@ -1,38 +1,18 @@
-"""
-DNA Sequence Processing Module
+"""Sequence utilities for encoding, mutation, and genome extraction.
 
-This module provides comprehensive utilities for DNA sequence manipulation:
+Purpose:
+    Implement reusable DNA sequence operations for DGS data preparation.
 
-Key Components:
-1. Core Sequence Operations:
-   - Sequence validation and cleaning
-   - Reverse complement generation
-   - GC content calculation
-   - Sequence complexity analysis
+Main Responsibilities:
+    - Convert DNA strings to/from one-hot representations.
+    - Provide sequence transforms such as reverse-complement and centered mutation.
+    - Extract interval-based sequences from FASTA through the `Genome` helper.
 
-2. Encoding/Decoding:
-   - One-hot encoding with customizable formats
-   - Efficient batch processing
-   - Support for N bases
-   - Memory-efficient operations
-
-3. Sequence Classes:
-   - DNASeq: Core sequence manipulation
-   - Genome: Genome-wide sequence operations
-   - Efficient sequence extraction
-   - Format conversion utilities
-
-4. Analysis Tools:
-   - GC content analysis
-   - Sequence complexity metrics
-   - Quality assessment
-   - Pattern detection
-
-The module is designed for:
-- High-performance sequence processing
-- Memory-efficient operations
-- Flexible sequence representation
-- Integration with deep learning pipelines
+Key Runtime Notes:
+    - One-hot channel order is fixed as `(A, C, G, T)`.
+    - Single sequence shape is `(sequence_length, 4)` and batched shape is
+      `(batch_size, max_length, 4)`.
+    - Unknown bases (`N`) are encoded as all-zero channels.
 """
 
 import numpy as np
@@ -63,6 +43,16 @@ ONEHOT_MAP = {
 BASE_TO_IDX = {'A': 0, 'C': 1, 'G': 2, 'T': 3, 'N': 4}
 IDX_TO_BASE = ['A', 'C', 'G', 'T', 'N']
 
+_ASCII_TO_BASE_INDEX = np.full(256, 4, dtype=np.uint8)
+_ASCII_TO_BASE_INDEX[ord('A')] = 0
+_ASCII_TO_BASE_INDEX[ord('a')] = 0
+_ASCII_TO_BASE_INDEX[ord('C')] = 1
+_ASCII_TO_BASE_INDEX[ord('c')] = 1
+_ASCII_TO_BASE_INDEX[ord('G')] = 2
+_ASCII_TO_BASE_INDEX[ord('g')] = 2
+_ASCII_TO_BASE_INDEX[ord('T')] = 3
+_ASCII_TO_BASE_INDEX[ord('t')] = 3
+
 def validate_sequence(seq: str) -> bool:
     """Validate DNA sequence composition.
     
@@ -75,7 +65,7 @@ def validate_sequence(seq: str) -> bool:
         seq: Input DNA sequence
         
     Returns:
-        bool: True if sequence is valid
+        `True` if sequence is valid.
         
     Raises:
         ValueError: If invalid bases are found
@@ -109,6 +99,37 @@ def get_reverse_complement(seq: str) -> str:
     """
     return ''.join(COMPLEMENT_MAP[base] for base in reversed(seq))
 
+def mutate_sequence(seq: str, var_ref: str, var_alt: str) -> str:
+    """Apply a centered variant edit while preserving sequence length.
+
+    This helper keeps behavior compatible with historical VEP logic:
+    - substitution: replace reference bases at the center window
+    - deletion: remove extra reference bases and pad trailing `N`
+    - insertion: insert alternate bases and symmetrically trim to target length
+
+    Args:
+        seq: Reference sequence.
+        var_ref: Reference allele.
+        var_alt: Alternate allele.
+
+    Returns:
+        Sequence with the variant applied, length equal to `len(seq)`.
+    """
+    mid = len(seq) // 2
+    target_len = len(seq)
+
+    if len(var_ref) == len(var_alt):  # SNP/MNV
+        seq = seq[:mid] + var_alt + seq[mid + len(var_ref):]
+    elif len(var_ref) > len(var_alt):  # deletion
+        pad = "N" * (len(var_ref) - len(var_alt))
+        seq = seq[:mid] + var_alt + seq[mid + len(var_ref):] + pad
+    else:  # insertion
+        trim = (len(var_alt) - len(var_ref)) // 2
+        seq = seq[:mid] + var_alt + seq[mid + len(var_ref):]
+        seq = seq[trim:trim + target_len]
+
+    return seq
+
 def sequence_to_onehot(seq: str, dtype: np.dtype = np.float32) -> np.ndarray:
     """Convert DNA sequence to one-hot encoding.
     
@@ -122,8 +143,7 @@ def sequence_to_onehot(seq: str, dtype: np.dtype = np.float32) -> np.ndarray:
         dtype: Numpy data type for output array
         
     Returns:
-        np.ndarray: One-hot encoded sequence
-            Shape: (sequence_length, 4)
+        One-hot encoded sequence with shape `(sequence_length, 4)`.
             
     Example:
         >>> sequence_to_onehot("ACGT")
@@ -134,7 +154,17 @@ def sequence_to_onehot(seq: str, dtype: np.dtype = np.float32) -> np.ndarray:
     """
     if not seq:
         return np.zeros((0, 4), dtype=dtype)
-    return np.array([ONEHOT_MAP.get(base.upper(), [0,0,0,0]) for base in seq], dtype=dtype)
+
+    # Vectorized ASCII lookup is significantly faster than per-base Python loops.
+    seq_bytes = np.frombuffer(seq.encode("utf-8"), dtype=np.uint8)
+    base_indices = _ASCII_TO_BASE_INDEX[seq_bytes]
+
+    onehot = np.zeros((seq_bytes.size, 4), dtype=dtype)
+    valid_mask = base_indices < 4
+    if np.any(valid_mask):
+        rows = np.nonzero(valid_mask)[0]
+        onehot[rows, base_indices[valid_mask]] = 1
+    return onehot
 
 def onehot_to_sequence(encoded: np.ndarray, include_n: bool = True) -> str:
     """Convert one-hot encoding back to DNA sequence.
@@ -180,9 +210,8 @@ def batch_to_onehot(sequences: List[str], dtype: np.dtype = np.float32) -> np.nd
         dtype: Data type for output array
         
     Returns:
-        np.ndarray: One-hot encoded sequences
-            Shape: (n_sequences, max_length, 4)
-            Empty sequences are padded with zeros
+        One-hot encoded batch with shape `(n_sequences, max_length, 4)`.
+        Empty sequence positions are zero-padded.
             
     Example:
         >>> seqs = ["ACGT", "AT"]
@@ -398,12 +427,27 @@ class DNASeq:
         return DNASeq(get_reverse_complement(self._sequence))
         
     def to_onehot(self, dtype: np.dtype = np.float32) -> np.ndarray:
-        """Convert to one-hot encoding."""
+        """Convert this sequence to one-hot encoding.
+
+        Args:
+            dtype (np.dtype): Output dtype for encoded array.
+
+        Returns:
+            np.ndarray: One-hot array with shape `(sequence_length, 4)`.
+        """
         return sequence_to_onehot(self._sequence, dtype)
         
     @classmethod
     def from_onehot(cls, encoded: np.ndarray, include_n: bool = True) -> 'DNASeq':
-        """Create sequence from one-hot encoding."""
+        """Create a `DNASeq` instance from a one-hot array.
+
+        Args:
+            encoded (np.ndarray): One-hot encoded sequence array.
+            include_n (bool): Whether all-zero rows are decoded as `N`.
+
+        Returns:
+            DNASeq: Decoded sequence object.
+        """
         return cls(onehot_to_sequence(encoded, include_n))
         
     def gc_content(self, window_size: Optional[int] = None) -> Union[float, np.ndarray]:
@@ -420,7 +464,15 @@ class DNASeq:
         return calculate_gc_content(self._sequence)
     
     def complexity(self, k: int = 3, normalize: bool = True) -> float:
-        """Calculate sequence complexity."""
+        """Calculate k-mer diversity complexity.
+
+        Args:
+            k (int): K-mer size used for complexity estimation.
+            normalize (bool): Whether to normalize by theoretical maximum.
+
+        Returns:
+            float: Sequence complexity score.
+        """
         return calculate_complexity(self._sequence, k, normalize)
 
 class Genome:
@@ -480,7 +532,7 @@ class Genome:
             **kwargs: Additional extraction parameters
             
         Returns:
-            List[DNASeq]: Extracted sequences
+            Extracted sequences as a list of `DNASeq` objects.
             
         Raises:
             RuntimeError: If reader is unavailable (e.g., closed or not initialized)
@@ -551,17 +603,40 @@ class Genome:
 
 # Legacy functions for backward compatibility
 def reverse_complement(seq: str) -> str:
-    """Legacy function for reverse complement."""
+    """Legacy wrapper for reverse-complement conversion.
+
+    Args:
+        seq (str): Input DNA sequence.
+
+    Returns:
+        str: Reverse-complement sequence.
+    """
     return get_reverse_complement(seq)
 
 def one_hot_encode(sequences: Union[str, List[str]], dtype: np.dtype = np.float32) -> np.ndarray:
-    """Legacy function for one-hot encoding."""
+    """Legacy wrapper for one-hot sequence encoding.
+
+    Args:
+        sequences (str or list[str]): Sequence string or list of sequences.
+        dtype (np.dtype): Output dtype for encoded array.
+
+    Returns:
+        np.ndarray: Encoded one-hot array.
+    """
     if isinstance(sequences, str):
         return sequence_to_onehot(sequences, dtype)
     return batch_to_onehot(sequences, dtype)
 
 def one_hot_decode(encoded: np.ndarray, include_n: bool = True) -> Union[str, List[str]]:
-    """Legacy function for one-hot decoding."""
+    """Legacy wrapper for decoding one-hot arrays back to sequence text.
+
+    Args:
+        encoded (np.ndarray): One-hot encoded sequence array or batch array.
+        include_n (bool): Whether all-zero rows are decoded as `N`.
+
+    Returns:
+        str or list[str]: Decoded sequence(s).
+    """
     if encoded.ndim == 2:
         return onehot_to_sequence(encoded, include_n)
     return batch_from_onehot(encoded, include_n)

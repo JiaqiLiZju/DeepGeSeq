@@ -1,40 +1,17 @@
-"""
-Model Evaluation and Metrics Module
+"""Evaluation metrics and plotting utilities.
 
-This module provides comprehensive evaluation tools for assessing model performance
-on genomic sequence analysis tasks. It supports both classification and regression
-metrics for various prediction scenarios.
+Purpose:
+    Compute model quality metrics for classification and regression tasks.
 
-Key Components:
-1. Classification Metrics:
-   - Binary and multi-class classification
-   - ROC curves and AUC calculation
-   - Precision-recall analysis
-   - F1 score and accuracy metrics
+Main Responsibilities:
+    - Calculate task-level metrics for scalar and multi-task outputs.
+    - Calculate sequence-level metrics with optional masks.
+    - Provide ROC/PR plotting helpers for evaluation reporting.
 
-2. Regression Metrics:
-   - Mean squared error (MSE)
-   - Root mean squared error (RMSE)
-   - Mean absolute error (MAE)
-   - R-squared and correlation coefficients
-
-3. Sequence-Level Metrics:
-   - Position-wise performance analysis
-   - Sequence-averaged metrics
-   - Masked evaluation support
-   - Per-sample statistics
-
-4. Visualization Tools:
-   - ROC curve plotting
-   - Precision-recall curve visualization
-   - Performance comparison plots
-   - Metric distribution analysis
-
-The module is designed to handle various prediction formats:
-- Single-task and multi-task models
-- Binary and multi-class classification
-- Continuous value regression
-- Sequence-to-sequence prediction
+Key Runtime Notes:
+    - Classification metrics treat `y_pred` as probability-like scores.
+    - Sequence-level helpers flatten masked positions for aggregate metrics.
+    - Metric outputs can be returned as dictionaries or DataFrames.
 """
 
 import os
@@ -518,5 +495,4 @@ def show_pr_curve(metrics,
     else:
         plt.show()
     plt.close()
-
 

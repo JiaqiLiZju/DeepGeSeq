@@ -3,8 +3,7 @@
 This module implements ResNet-style architectures adapted for genomic sequence data.
 The implementation includes attention mechanisms (CBAM) and is based on the following papers:
 
-References
-----------
+References:
 .. [1] Li, X., et al. (2019). Selective Kernel Networks.
        IEEE Conference on Computer Vision and Pattern Recognition.
 
@@ -15,8 +14,7 @@ References
 .. [3] Woo, S., et al. (2018). CBAM: Convolutional Block Attention Module.
        European Conference on Computer Vision (ECCV).
 
-Notes
------
+Notes:
 The implementation is modified from the original ResNet to handle one-hot encoded
 DNA sequences and includes attention modules using CBAM (Convolutional Block 
 Attention Module).
@@ -38,8 +36,7 @@ from ..Modules.BasicModule import BasicModule
 class BasicConv(nn.Module):
     """Basic convolution module with optional batch normalization and activation.
 
-    Parameters
-    ----------
+    Args:
     in_planes : int
         Number of input channels
     out_planes : int
@@ -63,6 +60,7 @@ class BasicConv(nn.Module):
     """
     def __init__(self, in_planes, out_planes, kernel_size, stride=1, padding=0, 
                         dilation=1, groups=1, relu=True, bn=True, bias=False):
+        """Initialize `BasicConv`."""
         super(BasicConv, self).__init__()
         self.out_channels = out_planes
         self.conv = nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, 
@@ -74,13 +72,11 @@ class BasicConv(nn.Module):
     def forward(self, x):
         """Forward pass of the convolution module.
 
-        Parameters
-        ----------
+        Args:
         x : torch.Tensor
             Input tensor
 
-        Returns
-        -------
+        Returns:
         torch.Tensor
             Output after convolution, optional batch norm and activation
         """
@@ -94,6 +90,7 @@ class BasicConv(nn.Module):
 class Flatten(nn.Module):
     """Flattens input tensor except batch dimension."""
     def forward(self, x):
+        """Compute forward outputs for `Flatten`."""
         return x.view(x.size(0), -1)
 
 class ChannelGate(nn.Module):
@@ -103,8 +100,7 @@ class ChannelGate(nn.Module):
     information. The attention weights are computed using a multi-layer
     perceptron.
 
-    Parameters
-    ----------
+    Args:
     gate_channels : int
         Number of input channels
     reduction_ratio : int, optional
@@ -113,6 +109,7 @@ class ChannelGate(nn.Module):
         Types of pooling to use (default: ['avg', 'max'])
     """
     def __init__(self, gate_channels, reduction_ratio=16, pool_types=['avg', 'max']):
+        """Initialize `ChannelGate`."""
         super(ChannelGate, self).__init__()
         self.gate_channels = gate_channels
         self.mlp = nn.Sequential(
@@ -129,13 +126,11 @@ class ChannelGate(nn.Module):
     def forward(self, x):
         """Forward pass of channel attention.
 
-        Parameters
-        ----------
+        Args:
         x : torch.Tensor
             Input tensor of shape (batch_size, channels, height, width)
 
-        Returns
-        -------
+        Returns:
         torch.Tensor
             Channel-attended tensor of same shape as input
         """
@@ -160,6 +155,7 @@ class ChannelGate(nn.Module):
 class ChannelPool(nn.Module):
     """Channel pooling module that concatenates max and mean pooling results."""
     def forward(self, x):
+        """Compute forward outputs for `ChannelPool`."""
         return torch.cat( (torch.max(x,1)[0].unsqueeze(1), torch.mean(x,1).unsqueeze(1)), dim=1 )
 
 class SpatialGate(nn.Module):
@@ -168,12 +164,12 @@ class SpatialGate(nn.Module):
     Applies spatial attention using both channel-wise max and average pooling
     information. The attention weights are computed using a convolution layer.
 
-    Parameters
-    ----------
+    Args:
     kernel_size : int, optional
         Size of the convolution kernel for computing spatial attention (default: 7)
     """
     def __init__(self):
+        """Initialize `SpatialGate`."""
         super(SpatialGate, self).__init__()
         kernel_size = 7
         self.compress = ChannelPool()
@@ -182,13 +178,11 @@ class SpatialGate(nn.Module):
     def forward(self, x):
         """Forward pass of spatial attention.
 
-        Parameters
-        ----------
+        Args:
         x : torch.Tensor
             Input tensor of shape (batch_size, channels, height, width)
 
-        Returns
-        -------
+        Returns:
         torch.Tensor
             Spatially-attended tensor of same shape as input
         """
@@ -204,8 +198,7 @@ class CBAM(nn.Module):
     representation. The module first applies channel attention followed by
     spatial attention.
 
-    Parameters
-    ----------
+    Args:
     gate_channels : int
         Number of input channels
     reduction_ratio : int, optional
@@ -216,6 +209,7 @@ class CBAM(nn.Module):
         Whether to exclude spatial attention (default: False)
     """
     def __init__(self, gate_channels, reduction_ratio=16, pool_types=['avg', 'max'], no_spatial=False):
+        """Initialize `CBAM`."""
         super(CBAM, self).__init__()
         self.ChannelGate = ChannelGate(gate_channels, reduction_ratio, pool_types)
         self.no_spatial=no_spatial
@@ -224,14 +218,12 @@ class CBAM(nn.Module):
     def forward(self, x):
         """Forward pass applying channel and optional spatial attention.
 
-        Parameters
-        ----------
+        Args:
         x : torch.Tensor
             Input tensor of shape (batch_size, channels, height, width)
             or (batch_size, 4, sequence_length) for DNA sequences
 
-        Returns
-        -------
+        Returns:
         torch.Tensor
             Attended tensor of same shape as input
         """
@@ -254,8 +246,7 @@ class BasicBlock(nn.Module):
     ReLU activation, and optional CBAM attention. The block includes a residual
     connection that adds the input to the transformed features.
 
-    Parameters
-    ----------
+    Args:
     inplanes : int
         Number of input channels
     planes : int
@@ -267,8 +258,7 @@ class BasicBlock(nn.Module):
     use_cbam : bool, optional
         Whether to use CBAM attention (default: False)
 
-    Notes
-    -----
+    Notes:
     The block follows this architecture:
     1. Conv1x3 -> BatchNorm -> ReLU
     2. Conv1x3 -> BatchNorm
@@ -279,6 +269,7 @@ class BasicBlock(nn.Module):
     expansion = 1
 
     def __init__(self, inplanes, planes, stride=1, downsample=None, use_cbam=False):
+        """Initialize `BasicBlock`."""
         super(BasicBlock, self).__init__()
         self.conv1 = conv1x3(inplanes, planes, stride)
         self.bn1 = nn.BatchNorm2d(planes)
@@ -296,13 +287,11 @@ class BasicBlock(nn.Module):
     def forward(self, x):
         """Forward pass of the basic block.
 
-        Parameters
-        ----------
+        Args:
         x : torch.Tensor
             Input tensor
 
-        Returns
-        -------
+        Returns:
         torch.Tensor
             Output tensor after residual block processing
         """
@@ -334,8 +323,7 @@ class Bottleneck(nn.Module):
     This design reduces parameters while maintaining model capacity. The block
     includes batch normalization, ReLU activation, and optional CBAM attention.
 
-    Parameters
-    ----------
+    Args:
     inplanes : int
         Number of input channels
     planes : int
@@ -347,8 +335,7 @@ class Bottleneck(nn.Module):
     use_cbam : bool, optional
         Whether to use CBAM attention (default: False)
 
-    Notes
-    -----
+    Notes:
     The block follows this architecture:
     1. Conv1x1 -> BatchNorm -> ReLU
     2. Conv1x3 -> BatchNorm -> ReLU
@@ -361,6 +348,7 @@ class Bottleneck(nn.Module):
     expansion = 4
 
     def __init__(self, inplanes, planes, stride=1, downsample=None, use_cbam=False):
+        """Initialize `Bottleneck`."""
         super(Bottleneck, self).__init__()
         self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=1, bias=False)
         self.bn1 = nn.BatchNorm2d(planes)
@@ -381,13 +369,11 @@ class Bottleneck(nn.Module):
     def forward(self, x):
         """Forward pass of the bottleneck block.
 
-        Parameters
-        ----------
+        Args:
         x : torch.Tensor
             Input tensor
 
-        Returns
-        -------
+        Returns:
         torch.Tensor
             Output tensor after bottleneck block processing
         """
@@ -423,8 +409,7 @@ class ResNet(BasicModule):
     one-hot encoded DNA sequences. It supports different network configurations
     (18, 34, 50, 101 layers) and includes optional attention mechanisms.
 
-    Parameters
-    ----------
+    Args:
     block : type
         Type of residual block to use (BasicBlock or Bottleneck)
     layers : list of int
@@ -436,8 +421,7 @@ class ResNet(BasicModule):
     att_type : str, optional
         Type of attention to use (default: None)
 
-    Notes
-    -----
+    Notes:
     - Input shape: (batch_size, 4, sequence_length) for DNA sequences
     - The network type determines the initial convolution and pooling layers
     - Supports CBAM attention mechanism
@@ -445,6 +429,7 @@ class ResNet(BasicModule):
     """
     
     def __init__(self, block, layers, network_type=None, num_classes=None, att_type=None):
+        """Initialize `ResNet`."""
         self.inplanes = 64
         super(ResNet, self).__init__()
         self.network_type = network_type
@@ -494,8 +479,7 @@ class ResNet(BasicModule):
     def _make_layer(self, block, planes, blocks, stride=1, att_type=None):
         """Create a layer of residual blocks.
 
-        Parameters
-        ----------
+        Args:
         block : type
             Type of residual block to use
         planes : int
@@ -507,8 +491,7 @@ class ResNet(BasicModule):
         att_type : str, optional
             Type of attention to use (default: None)
 
-        Returns
-        -------
+        Returns:
         nn.Sequential
             Sequential container of residual blocks
         """
@@ -531,13 +514,11 @@ class ResNet(BasicModule):
     def forward(self, x):
         """Forward pass of the ResNet model.
 
-        Parameters
-        ----------
+        Args:
         x : torch.Tensor
             Input tensor of shape (batch_size, 4, sequence_length)
 
-        Returns
-        -------
+        Returns:
         torch.Tensor
             Output tensor, shape depends on network configuration
         """
@@ -583,8 +564,7 @@ def ResidualNet(network_type, depth, num_classes, att_type):
 
     Creates a ResNet model with specified depth and configuration.
 
-    Parameters
-    ----------
+    Args:
     network_type : str
         Type of network ('ImageNet', 'CIFAR10', 'CIFAR100')
     depth : int
@@ -594,13 +574,11 @@ def ResidualNet(network_type, depth, num_classes, att_type):
     att_type : str
         Type of attention to use
 
-    Returns
-    -------
+    Returns:
     ResNet
         Configured ResNet model
 
-    Raises
-    ------
+    Raises:
     AssertionError
         If network_type or depth is not supported
     """

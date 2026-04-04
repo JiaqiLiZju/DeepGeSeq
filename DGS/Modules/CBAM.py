@@ -4,8 +4,7 @@ This module implements a modified version of CBAM adapted for genomic sequence d
 CBAM enhances feature representations by applying both channel and spatial attention
 mechanisms sequentially.
 
-Classes
--------
+Classes:
 BasicConv
     Basic convolution with optional batch normalization and activation
 ChannelGate
@@ -15,14 +14,12 @@ SpatialGate
 CBAM
     Main attention module combining channel and spatial attention
 
-References
-----------
+References:
 .. [1] Woo, S., Park, J., Lee, J. Y., & Kweon, I. S. (2018).
        CBAM: Convolutional Block Attention Module.
        Proceedings of the European Conference on Computer Vision (ECCV).
 
-Notes
------
+Notes:
 This implementation is modified from the original CBAM to work with 1D genomic
 sequences. The input is expected to be of shape (batch_size, channels, sequence_length)
 or will be automatically reshaped to (batch_size, channels, 1, sequence_length).
@@ -40,8 +37,7 @@ __all__ = ["CBAM"]
 class BasicConv(nn.Module):
     """Basic convolution module with optional batch normalization and activation.
 
-    Parameters
-    ----------
+    Args:
     in_planes : int
         Number of input channels
     out_planes : int
@@ -65,6 +61,7 @@ class BasicConv(nn.Module):
     """
     def __init__(self, in_planes, out_planes, kernel_size, stride=1, padding=0, 
                 dilation=1, groups=1, relu=True, bn=True, bias=False):
+        """Initialize `BasicConv`."""
         super(BasicConv, self).__init__()
         self.out_channels = out_planes
         self.conv = nn.Conv1d(in_planes, out_planes, kernel_size=kernel_size, 
@@ -76,13 +73,11 @@ class BasicConv(nn.Module):
     def forward(self, x):
         """Forward pass of convolution module.
 
-        Parameters
-        ----------
+        Args:
         x : torch.Tensor
             Input tensor
 
-        Returns
-        -------
+        Returns:
         torch.Tensor
             Output after convolution, optional batch norm and activation
         """
@@ -102,6 +97,7 @@ class BasicConv(nn.Module):
 class Flatten(nn.Module):
     """Flattens input tensor except batch dimension."""
     def forward(self, x):
+        """Compute forward outputs for `Flatten`."""
         return x.view(x.size(0), -1)
 
 class ChannelGate(nn.Module):
@@ -110,8 +106,7 @@ class ChannelGate(nn.Module):
     Applies channel-wise attention using both max and average pooling information.
     The attention weights are computed using a multi-layer perceptron.
 
-    Parameters
-    ----------
+    Args:
     gate_channels : int
         Number of input channels
     reduction_ratio : int, optional
@@ -120,6 +115,7 @@ class ChannelGate(nn.Module):
         Types of pooling to use (default: ['avg', 'max'])
     """
     def __init__(self, gate_channels, reduction_ratio=16, pool_types=['avg', 'max']):
+        """Initialize `ChannelGate`."""
         super(ChannelGate, self).__init__()
         self.gate_channels = gate_channels
         self.mlp = nn.Sequential(
@@ -133,13 +129,11 @@ class ChannelGate(nn.Module):
     def forward(self, x):
         """Forward pass of channel attention.
 
-        Parameters
-        ----------
+        Args:
         x : torch.Tensor
             Input tensor
 
-        Returns
-        -------
+        Returns:
         torch.Tensor
             Channel-attended tensor
         """
@@ -170,13 +164,11 @@ class ChannelGate(nn.Module):
 def logsumexp_2d(tensor):
     """Compute log-sum-exp pooling for 2D tensor.
 
-    Parameters
-    ----------
+    Args:
     tensor : torch.Tensor
         Input tensor
 
-    Returns
-    -------
+    Returns:
     torch.Tensor
         Log-sum-exp pooled tensor
     """
@@ -188,6 +180,7 @@ def logsumexp_2d(tensor):
 class ChannelPool(nn.Module):
     """Channel pooling module that concatenates max and mean pooling results."""
     def forward(self, x):
+        """Compute forward outputs for `ChannelPool`."""
         max_pool = torch.max(x,1)[0].unsqueeze(1)
         mean_pool = torch.mean(x,1).unsqueeze(1)
         logging.debug("Channel pool output shape: %s", str(torch.cat((max_pool, mean_pool), dim=1).shape))
@@ -198,12 +191,12 @@ class SpatialGate(nn.Module):
 
     Applies spatial attention using channel pooling and convolution.
 
-    Parameters
-    ----------
+    Args:
     kernel_size : int, optional
         Size of convolution kernel (default: 7)
     """
     def __init__(self):
+        """Initialize `SpatialGate`."""
         super(SpatialGate, self).__init__()
         kernel_size = 7
         self.compress = ChannelPool()
@@ -213,13 +206,11 @@ class SpatialGate(nn.Module):
     def forward(self, x):
         """Forward pass of spatial attention.
 
-        Parameters
-        ----------
+        Args:
         x : torch.Tensor
             Input tensor
 
-        Returns
-        -------
+        Returns:
         torch.Tensor
             Spatially-attended tensor
         """
@@ -240,8 +231,7 @@ class CBAM(nn.Module):
     representation. The module first applies channel attention followed by
     spatial attention.
 
-    Parameters
-    ----------
+    Args:
     gate_channels : int
         Number of input channels
     reduction_ratio : int, optional
@@ -251,13 +241,13 @@ class CBAM(nn.Module):
     no_spatial : bool, optional
         Whether to exclude spatial attention (default: False)
 
-    Notes
-    -----
+    Notes:
     The module automatically handles both 3D (batch_size, channels, length)
     and 4D (batch_size, channels, 1, length) inputs.
     """
     def __init__(self, gate_channels, reduction_ratio=16, pool_types=['avg', 'max'], 
                  no_spatial=False):
+        """Initialize `CBAM`."""
         super(CBAM, self).__init__()
         self.ChannelGate = ChannelGate(gate_channels, reduction_ratio, pool_types)
         self.no_spatial = no_spatial
@@ -268,14 +258,12 @@ class CBAM(nn.Module):
     def forward(self, x):
         """Forward pass applying channel and optional spatial attention.
 
-        Parameters
-        ----------
+        Args:
         x : torch.Tensor
             Input tensor of shape (batch_size, channels, length) or
             (batch_size, channels, 1, length)
 
-        Returns
-        -------
+        Returns:
         torch.Tensor
             Attended tensor of same shape as input
         """
@@ -295,8 +283,7 @@ class CBAM(nn.Module):
     def get_attention(self):
         """Get the attention weights from the last forward pass.
 
-        Returns
-        -------
+        Returns:
         torch.Tensor
             Attention weights tensor
         """

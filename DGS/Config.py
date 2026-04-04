@@ -1,38 +1,20 @@
-"""
-Configuration Management Module for DGS (Deep Genomic Sequence Analysis Toolkit)
+"""Configuration schema and compatibility helpers for DGS.
 
-This module provides a comprehensive configuration system for managing all aspects
-of genomic sequence analysis in DGS. It includes configuration classes for data
-processing, model architecture, training, evaluation, and prediction.
+This module defines dataclass-backed configuration structures and a
+`ConfigManager` helper for loading, normalizing, and exporting runtime config.
 
-Key Components:
-1. Configuration Classes:
-   - DataConfig: Data processing and dataset management
-   - ModelConfig: Neural network architecture settings
-   - TrainerConfig: Training parameters and optimization
-   - EvaluateConfig: Model evaluation settings
-   - ExplainConfig: Model interpretation parameters
-   - PredictConfig: Variant effect prediction settings
-   - DgsConfig: Main configuration container
-
-2. Configuration Management:
-   - ConfigManager: Handles loading, saving, and updating configurations
-   - Example configuration generation
-   - Configuration validation and error handling
-
-Usage Example:
-    # Load configuration
-    config_manager = ConfigManager()
-    config = config_manager.load_config("config.json")
-
-    # Generate example configuration
-    config_manager.generate_example_config("minimal", "example_config.json")
+Compatibility behavior:
+    - Legacy optimizer/loss keys such as `train.optimizer.lr` are normalized to
+      `train.optimizer.params.lr`.
+    - Normalization is non-destructive for caller input because updates are
+      applied to a deep-copied dictionary.
 """
 
 import json
 import logging
+import copy
 from pathlib import Path
-from typing import Dict, Any, Optional, Union, List
+from typing import Dict, Any, Optional, Union, List, Tuple
 try:
     from typing import Literal  # Python >= 3.8
 except ImportError:
@@ -44,6 +26,8 @@ except ImportError:
                 return Any
         Literal = _Literal()  # type: ignore
 from dataclasses import dataclass, field, asdict
+
+logger = logging.getLogger("dgs.config")
 
 @dataclass
 class DataConfig:
@@ -213,6 +197,7 @@ class EvaluateConfig:
         metrics (List[str]): List of metrics to compute
         output_dir (str): Directory for evaluation results
         save_predictions (bool): Whether to save model predictions
+        checkpoint_path (Optional[str]): Optional checkpoint file for evaluate-only runs
     """
     split: Literal["train", "val", "test"] = "test"
     metrics: List[str] = field(default_factory=lambda: [
@@ -220,6 +205,7 @@ class EvaluateConfig:
     ])
     output_dir: str = "evaluation_results"
     save_predictions: bool = True
+    checkpoint_path: Optional[str] = None
 
 @dataclass
 class ExplainConfig:
@@ -251,11 +237,15 @@ class PredictConfig:
         sequence_length (int): Length of sequence context around variants
         metric_func (str): Function for computing variant effects
         mean_by_tasks (bool): Whether to average predictions across tasks
+        num_workers (int): Optional dataloader workers for batched prediction
+        pin_memory (bool): Optional pinned memory for batched prediction
     """
     vcf_path: str = ""
     sequence_length: int = 1000
     metric_func: str = "diff"
     mean_by_tasks: bool = True
+    num_workers: int = 0
+    pin_memory: bool = False
 
 @dataclass
 class DgsConfig:
@@ -272,6 +262,7 @@ class DgsConfig:
         data (DataConfig): Data processing configuration
         model (Dict): Model architecture configuration
         train (TrainerConfig): Training configuration
+        evaluate (EvaluateConfig): Evaluation configuration
         explain (ExplainConfig): Interpretation configuration
         predict (PredictConfig): Prediction configuration
     """
@@ -289,6 +280,7 @@ class DgsConfig:
         "args": {"output_size": 1}
     })
     train: TrainerConfig = field(default_factory=TrainerConfig)
+    evaluate: EvaluateConfig = field(default_factory=EvaluateConfig)
     explain: ExplainConfig = field(default_factory=ExplainConfig)
     predict: PredictConfig = field(default_factory=PredictConfig)
 
@@ -301,6 +293,65 @@ class ConfigError(Exception):
     - Parameter values are invalid
     - Configuration file cannot be loaded
     """
+
+
+def _normalize_legacy_component_params(component_cfg: Dict[str, Any], name: str) -> List[str]:
+    """Normalize legacy component keys into a nested `params` object.
+
+    Args:
+        component_cfg: Component config dictionary (for example optimizer config).
+        name: Human-readable component path used in compatibility notes.
+
+    Returns:
+        List of compatibility notes describing applied conversions.
+
+    Raises:
+        ConfigError: If `params` exists but is not a dictionary.
+    """
+    notes: List[str] = []
+    params = component_cfg.get("params")
+    if params is None:
+        params = {}
+        component_cfg["params"] = params
+    elif not isinstance(params, dict):
+        raise ConfigError(f"{name}.params must be a dictionary if provided")
+
+    reserved = {"type", "params"}
+    legacy_keys = [key for key in component_cfg.keys() if key not in reserved]
+    if legacy_keys:
+        for key in legacy_keys:
+            params.setdefault(key, component_cfg.pop(key))
+        notes.append(
+            f"Normalized legacy config keys for '{name}' into '{name}.params': {legacy_keys}"
+        )
+
+    return notes
+
+
+def normalize_config(config: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
+    """Normalize legacy config layouts into the current schema.
+
+    Args:
+        config: Raw user configuration.
+
+    Returns:
+        Tuple `(normalized_config, notes)` where `notes` records applied
+        compatibility transformations.
+    """
+    normalized = copy.deepcopy(config)
+    notes: List[str] = []
+
+    train_cfg = normalized.get("train")
+    if isinstance(train_cfg, dict):
+        optimizer_cfg = train_cfg.get("optimizer")
+        if isinstance(optimizer_cfg, dict):
+            notes.extend(_normalize_legacy_component_params(optimizer_cfg, "train.optimizer"))
+
+        criterion_cfg = train_cfg.get("criterion")
+        if isinstance(criterion_cfg, dict):
+            notes.extend(_normalize_legacy_component_params(criterion_cfg, "train.criterion"))
+
+    return normalized, notes
 
 class ConfigManager:
     """
@@ -315,7 +366,9 @@ class ConfigManager:
     """
     
     def __init__(self):
+        """Initialize an empty configuration manager state."""
         self._config: Dict[str, Any] = {}
+        self._compat_notes: List[str] = []
         
     def load_config(self, config: Union[str, Dict[str, Any], Path]) -> Dict[str, Any]:
         """
@@ -333,12 +386,24 @@ class ConfigManager:
         """
         if isinstance(config, (str, Path)):
             config = self._load_from_file(config)
-        
-        self._config = config
-        return config
+
+        normalized_config, compat_notes = normalize_config(config)
+        self._config = normalized_config
+        self._compat_notes = compat_notes
+        return normalized_config
     
     def _load_from_file(self, path: Union[str, Path]) -> Dict[str, Any]:
-        """Load configuration from JSON file."""
+        """Load configuration from a JSON file.
+
+        Args:
+            path: JSON file path.
+
+        Returns:
+            Parsed configuration dictionary.
+
+        Raises:
+            FileNotFoundError: If `path` does not exist.
+        """
         path = Path(path)
         if not path.exists():
             raise FileNotFoundError(f"Config file not found: {path}")
@@ -352,6 +417,9 @@ class ConfigManager:
 
         Args:
             path: Path to save configuration file
+
+        Side effects:
+            Writes JSON content to `path`.
         """
         with open(path, 'w') as f:
             json.dump(self._config, f, indent=4)
@@ -359,9 +427,17 @@ class ConfigManager:
     def get_config(self) -> Dict[str, Any]:
         """Get current configuration."""
         return self._config
+
+    def get_compat_notes(self) -> List[str]:
+        """Get compatibility notes generated during config normalization."""
+        return self._compat_notes
     
     def update_config(self, updates: Dict[str, Any]):
-        """Update current configuration."""
+        """Update current configuration with a shallow dictionary merge.
+
+        Args:
+            updates: Key-value pairs to merge into current configuration.
+        """
         self._config.update(updates)
 
     def generate_example_config(self, example: Literal["minimal", "full"], output: str):
@@ -383,7 +459,7 @@ class ConfigManager:
             config = complete_configs
         else:
             raise ValueError(f"Invalid example: {example}")
-        self._config = config
+        self._config, self._compat_notes = normalize_config(config)
         self.save_config(output)
 
 # Minimal demonstration config.
@@ -480,6 +556,10 @@ complete_configs = {
         "use_tensorboard": False,
         "tensorboard_dir": "tensorboard"
     },
+
+    "evaluate": {
+        "checkpoint_path": None
+    },
     
     "explain": {
         "target": 0,
@@ -491,6 +571,8 @@ complete_configs = {
         "vcf_path": "Test/test.vcf",
         "sequence_length": 1000,
         "metric_func": "diff",
-        "mean_by_tasks": True
+        "mean_by_tasks": True,
+        "num_workers": 0,
+        "pin_memory": False
     }
 }

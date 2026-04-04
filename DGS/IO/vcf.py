@@ -1,37 +1,31 @@
-"""VCF file reader module for genomic variants.
+"""VCF parsing helpers used by prediction workflows.
 
-This module provides functionality for reading and processing Variant Call Format (VCF)
-files, which store gene sequence variations (SNPs, indels, etc).
+Purpose:
+    Parse core VCF columns into a pandas DataFrame for downstream processing.
 
-Functions
----------
-read_vcf(filename)
-    Read a VCF file into a pandas DataFrame with standardized columns
+Main Responsibilities:
+    - Read standard VCF records while skipping metadata/comment lines.
+    - Enforce stable column naming for `CHROM`, `POS`, `REF`, `ALT`, and peers.
+    - Provide lightweight logging for success and failure cases.
 
-Notes
------
-The module currently supports basic VCF parsing with the following features:
-- Standard VCF columns (CHROM, POS, ID, etc.)
-- Comment filtering
-- Basic data type conversion
-- Memory-efficient reading
+Key Runtime Notes:
+    - Only the first 9 standard VCF columns are loaded.
+    - `POS` is parsed as integer and other columns are parsed as strings.
+    - Parsing errors are logged and re-raised.
 """
 
 import pandas as pd
-import logging
 
 from . import logger
 
 def read_vcf(filename: str) -> pd.DataFrame:
     """Read a VCF file into a pandas DataFrame.
 
-    Parameters
-    ----------
+    Args:
     filename : str
         Path to the VCF file to read
 
-    Returns
-    -------
+    Returns:
     pd.DataFrame
         DataFrame containing VCF records with columns:
         - CHROM: Chromosome name (str)
@@ -44,8 +38,7 @@ def read_vcf(filename: str) -> pd.DataFrame:
         - INFO: Additional information (str)
         - FORMAT: Genotype format (str)
 
-    Notes
-    -----
+    Notes:
     - Comments (lines starting with #) are automatically filtered
     - Only the first 9 standard VCF columns are read
     - All columns except POS are read as strings
@@ -75,4 +68,3 @@ def read_vcf(filename: str) -> pd.DataFrame:
     except Exception as e:
         logger.error(f"Failed to read VCF file {filename}: {str(e)}")
         raise
-

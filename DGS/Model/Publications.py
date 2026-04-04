@@ -1,45 +1,11 @@
-"""Published deep learning models for genomic sequence analysis.
+"""Published genomic sequence model implementations.
 
-This module implements several influential published deep learning architectures
-for genomic sequence analysis. Each model is reimplemented following the original
-paper specifications while maintaining a consistent interface within the DGS framework.
+This module reimplements several well-known architectures and exposes them with
+consistent PyTorch module interfaces.
 
-Models
-------
-DeepSEA
-    Zhou & Troyanskaya (2015)
-    Predicts chromatin effects of sequence alterations with deep learning.
-    Nature Methods, 12(10), 931-934.
-
-Beluga
-    Zhou & Troyanskaya (2019)
-    Deep learning sequence-based ab initio prediction of variant effects on 
-    expression and disease risk. Nature Genetics, 51(1), 103-109.
-
-DanQ
-    Quang & Xie (2016)
-    DanQ: a hybrid convolutional and recurrent deep neural network for 
-    quantifying the function of DNA sequences. Nucleic Acids Research, 44(11).
-
-Basset
-    Kelley et al. (2016)
-    Basset: learning the regulatory code of the accessible genome with 
-    deep convolutional neural networks. Genome Research, 26(7), 990-999.
-
-BPNet
-    Avsec et al. (2021)
-    Base-resolution models of transcription-factor binding reveal soft 
-    motif syntax. Nature Genetics, 53(3), 354-366.
-
-scBasset
-    Yuan et al. (2022)
-    Accurate prediction of chromatin accessibility in single cells via 
-    deep learning. Nature Genetics, 54(7), 1062-1070.
-
-Notes
------
-All models expect input sequences in the form of one-hot encoded tensors with 
-shape (batch_size, 4, sequence_length) where 4 represents the nucleotides (A,C,G,T).
+Input convention:
+    Most models in this file consume one-hot encoded DNA tensors with shape
+    `(batch_size, 4, sequence_length)`.
 """
 
 import logging
@@ -57,36 +23,31 @@ class DeepSEA(nn.Module):
     The model uses a deep convolutional neural network to learn the regulatory
     code of DNA sequences and predict chromatin effects.
 
-    Parameters
-    ----------
+    Args:
     sequence_length : int
         Length of input DNA sequences
     n_genomic_features : int
         Number of chromatin features to predict
 
-    Architecture
-    -----------
+    Architecture:
     - Three convolutional layers with max pooling and dropout
     - Two fully connected layers with ReLU activation
     - Final sigmoid activation for multi-label prediction
 
-    Notes
-    -----
+    Notes:
     - Input shape: (batch_size, 4, sequence_length)
     - Output shape: (batch_size, n_genomic_features)
     - Uses binary cross-entropy loss
     - Trained with SGD optimizer
 
-    References
-    ----------
+    References:
     .. [1] Zhou, J., & Troyanskaya, O. G. (2015). 
            Predicting effects of noncoding variants with deep learning–based 
            sequence model. Nature Methods, 12(10), 931-934.
     """
     def __init__(self, sequence_length, n_genomic_features):
         """
-        Parameters
-        ----------
+        Args:
         sequence_length : int
         n_genomic_features : int
         """
@@ -151,18 +112,30 @@ class DeepSEA(nn.Module):
 
 
 class LambdaBase(nn.Sequential):
+    """Sequential wrapper that exposes lambda-based tensor transforms."""
+
     def __init__(self, fn, *args):
+        """Initialize wrapper.
+
+        Args:
+            fn: Callable applied to prepared module outputs.
+            *args: Child modules in sequential order.
+        """
         super(LambdaBase, self).__init__(*args)
         self.lambda_func = fn
 
     def forward_prepare(self, input):
+        """Collect child-module outputs used by lambda wrappers."""
         output = []
         for module in self._modules.values():
             output.append(module(input))
         return output if output else input
 
 class Lambda(LambdaBase):
+    """Apply a lambda function to prepared sequential outputs."""
+
     def forward(self, input):
+        """Apply the wrapped lambda to prepared intermediate outputs."""
         return self.lambda_func(self.forward_prepare(input))
 
 class Beluga(nn.Module):
@@ -172,33 +145,35 @@ class Beluga(nn.Module):
     An extension of DeepSEA with deeper architecture and improved training,
     used in the Expecto framework for variant effect prediction.
 
-    Parameters
-    ----------
+    Args:
     sequence_length : int
         Length of input DNA sequences
     n_genomic_features : int
         Number of genomic features to predict
 
-    Architecture
-    -----------
+    Architecture:
     - Six convolutional layers with max pooling and dropout
     - Two fully connected layers
     - Final sigmoid activation for multi-label prediction
 
-    Notes
-    -----
+    Notes:
     - Input shape: (batch_size, 4, sequence_length)
     - Output shape: (batch_size, n_genomic_features)
     - Uses binary cross-entropy loss
     - Deeper architecture than DeepSEA
 
-    References
-    ----------
+    References:
     .. [1] Zhou, J., et al. (2019). Deep learning sequence-based ab initio 
            prediction of variant effects on expression and disease risk. 
            Nature Genetics, 51(1), 103-109.
     """
     def __init__(self, sequence_length, n_genomic_features):
+        """Initialize Beluga architecture.
+
+        Args:
+            sequence_length: Input DNA sequence length.
+            n_genomic_features: Number of predicted output tasks.
+        """
         super(Beluga, self).__init__()
         conv_kernel_size = 8
         pool_kernel_size = 8
@@ -242,6 +217,14 @@ class Beluga(nn.Module):
         )
 
     def forward(self, x):
+        """Run forward pass for one-hot input sequences.
+
+        Args:
+            x: Input tensor with shape `(batch, 4, sequence_length)`.
+
+        Returns:
+            Prediction tensor with shape `(batch, n_genomic_features)`.
+        """
         x = x.unsqueeze(2) # update 2D sequences
         return self.model(x)
 
@@ -253,38 +236,33 @@ class DanQ(nn.Module):
     Combines convolutional layers for motif detection with bidirectional
     LSTM for regulatory grammar learning.
 
-    Parameters
-    ----------
+    Args:
     sequence_length : int
         Length of input DNA sequences
     n_genomic_features : int
         Number of genomic features to predict
 
-    Architecture
-    -----------
+    Architecture:
     - Convolutional layer for motif detection
     - Max pooling and dropout
     - Bidirectional LSTM for sequence patterns
     - Two fully connected layers
     - Final sigmoid activation
 
-    Notes
-    -----
+    Notes:
     - Input shape: (batch_size, 4, sequence_length)
     - Output shape: (batch_size, n_genomic_features)
     - Uses binary cross-entropy loss
     - Trained with RMSprop optimizer
 
-    References
-    ----------
+    References:
     .. [1] Quang, D., & Xie, X. (2016). DanQ: a hybrid convolutional and 
            recurrent deep neural network for quantifying the function of DNA 
            sequences. Nucleic Acids Research, 44(11).
     """
     def __init__(self, sequence_length, n_genomic_features):
         """
-        Parameters
-        ----------
+        Args:
         sequence_length : int
             Input sequence length
         n_genomic_features : int
@@ -324,9 +302,18 @@ class DanQ(nn.Module):
         return predict
 
     def criterion(self):
+        """Return default training loss for DanQ."""
         return nn.BCELoss()
 
     def get_optimizer(self, lr):
+        """Return optimizer class and kwargs used by DanQ.
+
+        Args:
+            lr: Learning rate.
+
+        Returns:
+            Tuple `(optimizer_class, optimizer_kwargs)`.
+        """
         return (torch.optim.RMSprop, {"lr": lr})
 
 
@@ -337,34 +324,36 @@ class Basset(nn.Module):
     Uses deep convolutional neural networks to learn the regulatory code
     of DNA sequences and predict chromatin accessibility.
 
-    Parameters
-    ----------
+    Args:
     sequence_length : int
         Length of input DNA sequences
     n_genomic_features : int
         Number of genomic features to predict
 
-    Architecture
-    -----------
+    Architecture:
     - Three convolutional layers with batch normalization
     - Max pooling after each convolution
     - Three fully connected layers with dropout
     - Final sigmoid activation
 
-    Notes
-    -----
+    Notes:
     - Input shape: (batch_size, 4, sequence_length)
     - Output shape: (batch_size, n_genomic_features)
     - Uses batch normalization for better training
     - Incorporates residual connections
 
-    References
-    ----------
+    References:
     .. [1] Kelley, D. R., et al. (2016). Basset: learning the regulatory code 
            of the accessible genome with deep convolutional neural networks. 
            Genome Research, 26(7), 990-999.
     """
     def __init__(self, sequence_length, n_genomic_features):
+        """Initialize Basset architecture.
+
+        Args:
+            sequence_length: Input DNA sequence length.
+            n_genomic_features: Number of predicted output tasks.
+        """
         super(Basset, self).__init__()
 
         self.model = nn.Sequential(
@@ -398,14 +387,14 @@ class Basset(nn.Module):
         )
 
     def forward(self, x):
+        """Run forward pass for one-hot input sequences."""
         x = x.unsqueeze(2) # update 2D sequences
         return self.model(x)
     
     def architecture(self):
         """Get the model's architecture parameters.
 
-        Returns
-        -------
+        Returns:
         dict
             Dictionary containing the model's architecture parameters
         """
@@ -464,8 +453,7 @@ class BPNet(nn.Module):
     both strands. The counts are then distributed across strands according
     to the single log softmax from 3.
     
-    Parameters
-    ----------
+    Args:
     n_filters: int, optional
             The number of filters to use per convolution. Default is 64.
     n_layers: int, optional
@@ -503,6 +491,22 @@ class BPNet(nn.Module):
         trimming=None,
         verbose=True,
     ):
+        """Initialize BPNet model.
+
+        Args:
+            input_len: Input sequence length.
+            output_dim: Output dimension for downstream task integration.
+            n_filters: Number of convolutional filters.
+            n_layers: Number of dilated residual blocks.
+            n_outputs: Number of profile output channels.
+            n_control_tracks: Number of control-signal channels.
+            alpha: Weight for count-related objective terms.
+            profile_output_bias: Whether profile head uses bias.
+            count_output_bias: Whether count head uses bias.
+            name: Optional model identifier.
+            trimming: Bases trimmed from each side of profile outputs.
+            verbose: Whether to print progress in external training loops.
+        """
         super(BPNet, self).__init__()
 
         # Set the attributes
@@ -555,16 +559,14 @@ class BPNet(nn.Module):
         log(sum(X_ctl_profile)+1) when the control is an experimental
         read track but can also be the output from another model.
         
-        Parameters
-        ----------
+        Args:
         X: torch.tensor, shape=(batch_size, 4, sequence_length)
                 The one-hot encoded batch of sequences.
         X_ctl: torch.tensor, shape=(batch_size, n_strands, sequence_length)
                 A value representing the signal of the control at each position in
                 the sequence.
        
-        Returns
-        -------
+        Returns:
         y_profile: torch.tensor, shape=(batch_size, n_strands, out_length)
                 The output predictions for each strand.
         """
@@ -598,8 +600,7 @@ class scBasset(nn.Module):
 
     WARNING: This model has not been fully tested yet. Use at your own risk.
 
-    Parameters
-    ----------
+    Args:
     num_cells : int
         The number of cells in the dataset.
     num_batches : int
@@ -611,6 +612,12 @@ class scBasset(nn.Module):
         The L2 regularization parameter for the batch layer.
     """
     def __init__(self, num_cells, num_batches=None):
+        """Initialize scBasset architecture.
+
+        Args:
+            num_cells: Number of cell outputs.
+            num_batches: Optional number of batches for correction branch.
+        """
         super(scBasset, self).__init__()
         self.conv1 = nn.Sequential(
             nn.Conv1d(in_channels=4, out_channels=288, kernel_size=17, padding=8),
@@ -680,6 +687,15 @@ class scBasset(nn.Module):
             self.fc2 = nn.Linear(in_features=32, out_features=num_batches)
 
     def forward(self, x, batch=None):
+        """Run forward pass for scBasset.
+
+        Args:
+            x: One-hot input tensor with shape `(batch, 4, sequence_length)`.
+            batch: Optional batch-design tensor for correction branch.
+
+        Returns:
+            Sigmoid output tensor with cell-level predictions.
+        """
         x = self.conv1(x)
         x = self.conv_tower(x)
         x = self.conv2(x)

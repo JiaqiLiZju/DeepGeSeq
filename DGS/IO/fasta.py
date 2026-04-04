@@ -1,40 +1,17 @@
-"""FASTA file reader module for genomic sequence data.
+"""FASTA reading helpers for interval-based sequence extraction.
 
-This module provides functionality for reading and processing FASTA format files,
-which store DNA/RNA sequence data. It supports random access to sequences and
-efficient extraction of genomic regions.
+Purpose:
+    Read genomic sequences from FASTA files with random-access support.
 
-Classes
--------
-FastaReader
-    Reader for FASTA sequence files with the following features:
-    - Random access to genomic sequences
-    - Efficient sequence extraction by coordinates
-    - Support for indexed FASTA files
-    - Batch sequence processing
-    - Memory-efficient reading
-    - Automatic index creation
+Main Responsibilities:
+    - Validate FASTA file paths and ensure index availability.
+    - Extract whole references or interval-specific sequence windows.
+    - Provide batch-style extraction for large interval collections.
 
-Notes
------
-The module uses pysam for efficient FASTA file handling and requires:
-- FASTA files (.fa, .fasta)
-- Optional compression (.gz)
-- Index files (.fai) for random access
-- Proper sequence formatting (no line wrapping recommended)
-
-Examples
---------
->>> reader = FastaReader("genome.fa")
->>> # Get specific region
->>> seq = reader.get_sequence("chr1", 1000, 2000)
->>> # Get multiple regions
->>> intervals = pd.DataFrame({
-...     "chrom": ["chr1", "chr2"],
-...     "start": [1000, 2000],
-...     "end": [1500, 2500]
-... })
->>> seqs = reader.read(intervals)
+Key Runtime Notes:
+    - Backed by `pysam.FastaFile` for indexed random access.
+    - Invalid intervals or failed fetches are padded with `N` strings.
+    - Coordinates follow 0-based, half-open interval semantics.
 """
 
 import pandas as pd
@@ -50,8 +27,7 @@ class FastaReader:
     Provides functionality for reading and extracting sequences from FASTA format
     files, with support for random access and batch processing.
 
-    Attributes
-    ----------
+    Attributes:
     file_path : Path
         Path to the FASTA file
     VALID_EXTENSIONS : list of str
@@ -59,8 +35,7 @@ class FastaReader:
     _fasta : pysam.FastaFile or None
         Pysam FASTA file handle
 
-    Methods
-    -------
+    Methods:
     read(intervals=None, batch_size=None, **kwargs)
         Read sequences from specified intervals
     get_sequence(chrom, start, end)
@@ -70,8 +45,7 @@ class FastaReader:
     validate_intervals(intervals)
         Validate genomic interval data format
 
-    Notes
-    -----
+    Notes:
     - Uses context manager for proper resource handling
     - Automatically creates index file if missing
     - Supports both whole genome and interval-based reading
@@ -87,15 +61,13 @@ class FastaReader:
     ):
         """Initialize FASTA reader.
         
-        Parameters
-        ----------
+        Args:
         file_path : str or Path
             Path to FASTA file
         validate_index : bool, optional
             Whether to validate and create index file if missing (default: True)
             
-        Raises
-        ------
+        Raises:
         ValueError
             If file path is invalid or file doesn't exist
         """
@@ -113,13 +85,11 @@ class FastaReader:
     def check_file(self) -> bool:
         """Check if file has valid extension and exists.
         
-        Returns
-        -------
+        Returns:
         bool
             True if file is valid, False otherwise
             
-        Notes
-        -----
+        Notes:
         Handles both gzipped and uncompressed files by checking the
         base extension before .gz if present.
         """
@@ -138,8 +108,7 @@ class FastaReader:
     def _check_index(self):
         """Check if index file exists and create if needed.
         
-        Notes
-        -----
+        Notes:
         Creates .fai index file using pysam.faidx if not present.
         Index file is required for random access to sequences.
         """
@@ -150,8 +119,7 @@ class FastaReader:
     def __enter__(self):
         """Context manager entry.
         
-        Returns
-        -------
+        Returns:
         FastaReader
             Self reference for context manager
         """
@@ -172,8 +140,7 @@ class FastaReader:
     def references(self) -> List[str]:
         """Get list of reference sequences.
         
-        Returns
-        -------
+        Returns:
         list of str
             Names of all sequences in the FASTA file
         """
@@ -185,8 +152,7 @@ class FastaReader:
     def lengths(self) -> Dict[str, int]:
         """Get dictionary of reference lengths.
         
-        Returns
-        -------
+        Returns:
         dict
             Mapping of sequence names to their lengths
         """
@@ -202,8 +168,7 @@ class FastaReader:
     ) -> Union[Dict[str, str], List[str], Iterator[List[str]]]:
         """Read sequences from FASTA file.
         
-        Parameters
-        ----------
+        Args:
         intervals : pd.DataFrame, optional
             DataFrame with genomic intervals (chrom, start, end)
         batch_size : int, optional
@@ -211,15 +176,13 @@ class FastaReader:
         **kwargs : dict
             Additional arguments for sequence extraction
             
-        Returns
-        -------
+        Returns:
         Union[Dict[str, str], List[str], Iterator[List[str]]]
             - Dict mapping sequence names to sequences if no intervals
             - List of sequences if intervals provided
             - Iterator of sequence batches if batch_size specified
             
-        Notes
-        -----
+        Notes:
         - Without intervals, returns all sequences
         - With intervals, extracts specific regions
         - With batch_size, processes intervals in chunks
@@ -252,20 +215,17 @@ class FastaReader:
     ) -> Iterator[List[str]]:
         """Extract sequences in batches.
         
-        Parameters
-        ----------
+        Args:
         intervals : pd.DataFrame
             DataFrame with genomic intervals
         batch_size : int
             Number of intervals per batch
             
-        Returns
-        -------
+        Returns:
         Iterator[List[str]]
             Iterator yielding lists of sequences
             
-        Notes
-        -----
+        Notes:
         Memory-efficient processing for large interval sets.
         """
         for i in range(0, len(intervals), batch_size):
@@ -275,31 +235,35 @@ class FastaReader:
     def _extract_sequences(self, intervals: pd.DataFrame) -> List[str]:
         """Extract sequences for a set of intervals.
         
-        Parameters
-        ----------
+        Args:
         intervals : pd.DataFrame
             DataFrame with genomic intervals
             
-        Returns
-        -------
+        Returns:
         list of str
             List of extracted sequences
             
-        Notes
-        -----
+        Notes:
         Returns N's for invalid or missing regions.
         """
+        if self._fasta is None:
+            self._fasta = pysam.FastaFile(str(self.file_path))
+
+        fetch = self._fasta.fetch
+        references = set(self._fasta.references)
         sequences = []
-        for _, row in intervals.iterrows():
+        for row in intervals.itertuples(index=False):
+            chrom = row.chrom
+            start = int(row.start)
+            end = int(row.end)
+            seq_len = max(0, end - start)
+            if chrom not in references or start < 0 or end <= start:
+                sequences.append("N" * seq_len)
+                continue
             try:
-                seq = self.get_sequence(
-                    row.chrom,
-                    row.start,
-                    row.end
-                )
-                sequences.append(seq)
-            except Exception as e:
-                sequences.append("N" * (row.end - row.start))
+                sequences.append(fetch(chrom, start, end))
+            except Exception:
+                sequences.append("N" * seq_len)
         return sequences
             
     def get_sequence(
@@ -310,8 +274,7 @@ class FastaReader:
     ) -> str:
         """Get sequence for specific coordinates.
         
-        Parameters
-        ----------
+        Args:
         chrom : str
             Chromosome or sequence name
         start : int
@@ -319,18 +282,15 @@ class FastaReader:
         end : int
             End position
             
-        Returns
-        -------
+        Returns:
         str
             DNA sequence
             
-        Raises
-        ------
+        Raises:
         ValueError
             If coordinates are invalid
             
-        Notes
-        -----
+        Notes:
         - Coordinates are 0-based, half-open [start, end)
         - Validates coordinates before extraction
         - Requires chromosome to exist in references
@@ -349,18 +309,15 @@ class FastaReader:
     def validate_intervals(self, intervals: pd.DataFrame) -> None:
         """Validate genomic intervals.
         
-        Parameters
-        ----------
+        Args:
         intervals : pd.DataFrame
             DataFrame with genomic intervals
             
-        Raises
-        ------
+        Raises:
         ValueError
             If intervals are invalid
             
-        Notes
-        -----
+        Notes:
         Validates:
         - Required columns (chrom, start, end)
         - Column data types (chrom: str, start/end: numeric)

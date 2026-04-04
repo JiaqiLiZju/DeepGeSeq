@@ -4,8 +4,7 @@ This module provides fundamental building blocks and base classes for the DGS fr
 It includes abstract base classes, basic neural network modules, and utility classes
 that form the foundation for more complex model architectures.
 
-Classes
--------
+Classes:
 BasicModule
     Abstract base class with weight initialization and model I/O utilities.
     Provides methods for parameter initialization and model saving/loading.
@@ -30,8 +29,7 @@ BasicLoss
     Task-specific loss functions module.
     Provides appropriate loss functions for different prediction tasks.
 
-Notes
------
+Notes:
 All modules follow a consistent interface and support debug-level logging for
 shape tracking and parameter initialization monitoring.
 """
@@ -52,8 +50,7 @@ class BasicModule(nn.Module):
     and parameter management. All model classes should inherit from this class
     to ensure consistent behavior.
 
-    Methods
-    -------
+    Methods:
     initialize_weights()
         Initialize module parameters using appropriate initialization schemes
     initialize_weights_from_pretrained(pretrained_net_fname)
@@ -66,6 +63,7 @@ class BasicModule(nn.Module):
         Test the module by running a forward pass with dummy input
     """
     def __init__(self):
+        """Initialize `BasicModule`."""
         super(BasicModule,self).__init__()
         logging.debug("Initializing BasicModule")
 
@@ -106,8 +104,7 @@ class BasicModule(nn.Module):
     def initialize_weights_from_pretrained(self, pretrained_net_fname):
         """Initialize module weights from a pretrained model.
 
-        Parameters
-        ----------
+        Args:
         pretrained_net_fname : str
             Path to the pretrained model file (e.g. 'checkpoint.pth')
         """
@@ -122,8 +119,7 @@ class BasicModule(nn.Module):
     def load(self, path):
         """Load module weights from a saved model file.
 
-        Parameters
-        ----------
+        Args:
         path : str
             Path to the saved model file
         """
@@ -134,13 +130,11 @@ class BasicModule(nn.Module):
     def save(self, fname=None):
         """Save module weights to a file.
 
-        Parameters
-        ----------
+        Args:
         fname : str, optional
             Path to save the model. If None, generates a timestamped filename.
 
-        Returns
-        -------
+        Returns:
         str
             Path to the saved model file
         """
@@ -154,13 +148,11 @@ class BasicModule(nn.Module):
     def test(self, input_size):
         """Test the module with dummy input.
 
-        Parameters
-        ----------
+        Args:
         input_size : tuple
             Shape of the input tensor to test with
 
-        Notes
-        -----
+        Notes:
         This method runs a forward pass with zero tensor and logs shapes.
         """
         logging.debug("Testing model with input size: %s", str(input_size))
@@ -180,13 +172,11 @@ class Flatten(nn.Module):
     def forward(self, x):
         """Reshape input tensor.
 
-        Parameters
-        ----------
+        Args:
         x : torch.Tensor
             Input tensor of any shape
 
-        Returns
-        -------
+        Returns:
         torch.Tensor
             Flattened tensor of shape (batch_size, -1)
         """
@@ -204,13 +194,11 @@ class EXP(nn.Module):
     def forward(self, x):
         """Apply exponential function.
 
-        Parameters
-        ----------
+        Args:
         x : torch.Tensor
             Input tensor
 
-        Returns
-        -------
+        Returns:
         torch.Tensor
             Exponential of input tensor
         """
@@ -225,8 +213,7 @@ class Residual(nn.Module):
     """
     def __init__(self, fn):
         """
-        Parameters
-        ----------
+        Args:
         fn : callable
             Transformation function to apply
         """
@@ -236,15 +223,13 @@ class Residual(nn.Module):
     def forward(self, x, **kwargs):
         """Apply residual connection.
 
-        Parameters
-        ----------
+        Args:
         x : torch.Tensor
             Input tensor
         **kwargs : dict
             Additional arguments passed to fn
 
-        Returns
-        -------
+        Returns:
         torch.Tensor
             Sum of input and transformed tensor
         """
@@ -258,8 +243,7 @@ class BasicConv1d(BasicModule):
     Combines convolution, batch normalization, activation, dropout, and pooling
     in a configurable sequence. Designed for processing genomic sequence data.
 
-    Parameters
-    ----------
+    Args:
     in_planes : int
         Number of input channels
     out_planes : int
@@ -283,8 +267,7 @@ class BasicConv1d(BasicModule):
     pool_args : dict, optional
         Arguments for pooling layer (default: {'kernel_size': 3})
 
-    Notes
-    -----
+    Notes:
     The module applies operations in the following order:
     1. Convolution
     2. Batch Normalization (optional)
@@ -297,6 +280,7 @@ class BasicConv1d(BasicModule):
                     activation=nn.ReLU, activation_args={}, 
                     dropout=True, dropout_args={'p':0.5},
                     pool=nn.AvgPool1d, pool_args={'kernel_size': 3}):
+        """Initialize `BasicConv1d`."""
         super().__init__()
         self.in_channels = in_planes
         self.out_channels = out_planes
@@ -309,13 +293,11 @@ class BasicConv1d(BasicModule):
     def forward(self, x):
         """Forward pass of the convolutional module.
 
-        Parameters
-        ----------
+        Args:
         x : torch.Tensor
             Input tensor of shape (batch_size, in_channels, sequence_length)
 
-        Returns
-        -------
+        Returns:
         torch.Tensor
             Processed tensor
         """
@@ -349,8 +331,7 @@ class BasicRNNModule(BasicModule):
     Implements a bidirectional LSTM layer with batch-first processing,
     suitable for analyzing sequential patterns in genomic data.
 
-    Parameters
-    ----------
+    Args:
     LSTM_input_size : int, optional
         Size of input features (default: 512)
     LSTM_hidden_size : int, optional
@@ -358,12 +339,12 @@ class BasicRNNModule(BasicModule):
     LSTM_hidden_layers : int, optional
         Number of LSTM layers (default: 2)
 
-    Notes
-    -----
+    Notes:
     - Uses batch_first=True for easier handling of variable length sequences
     - Implements bidirectional LSTM for capturing both forward and reverse patterns
     """
     def __init__(self, LSTM_input_size=512, LSTM_hidden_size=512, LSTM_hidden_layes=2):
+        """Initialize `BasicRNNModule`."""
         super().__init__()
         self.rnn_hidden_state = None
         self.rnn = nn.LSTM(
@@ -379,13 +360,11 @@ class BasicRNNModule(BasicModule):
     def forward(self, input):
         """Forward pass of the RNN module.
 
-        Parameters
-        ----------
+        Args:
         input : torch.Tensor
             Input tensor of shape (batch_size, sequence_length, input_size)
 
-        Returns
-        -------
+        Returns:
         torch.Tensor
             Output tensor of shape (batch_size, sequence_length, 2*hidden_size)
         """
@@ -401,8 +380,7 @@ class BasicLinearModule(BasicModule):
     Implements a linear layer with optional batch normalization, activation,
     and dropout. Used for feature transformation and dimensionality reduction.
 
-    Parameters
-    ----------
+    Args:
     input_size : int
         Size of input features
     output_size : int
@@ -420,8 +398,7 @@ class BasicLinearModule(BasicModule):
     dropout_args : dict, optional
         Arguments for dropout layer (default: {'p': 0.5})
 
-    Notes
-    -----
+    Notes:
     The module applies operations in the following order:
     1. Linear transformation
     2. Batch Normalization (optional)
@@ -431,6 +408,7 @@ class BasicLinearModule(BasicModule):
     def __init__(self, input_size, output_size, bias=True, bn=True, 
                     activation=nn.ReLU, activation_args={}, 
                     dropout=True, dropout_args={'p':0.5}):
+        """Initialize `BasicLinearModule`."""
         super().__init__()
         self.input_size = input_size
         self.output_size = output_size
@@ -442,13 +420,11 @@ class BasicLinearModule(BasicModule):
     def forward(self, x):
         """Forward pass of the linear module.
 
-        Parameters
-        ----------
+        Args:
         x : torch.Tensor
             Input tensor of shape (batch_size, input_size)
 
-        Returns
-        -------
+        Returns:
         torch.Tensor
             Transformed tensor of shape (batch_size, output_size)
         """
@@ -480,8 +456,7 @@ class BasicPredictor(BasicModule):
     - Multi-class classification (softmax activation)
     - Regression (identity activation)
 
-    Parameters
-    ----------
+    Args:
     input_size : int
         Size of input features
     output_size : int
@@ -490,12 +465,12 @@ class BasicPredictor(BasicModule):
         Type of prediction task (default: 'binary_classification')
         Options: ['none', 'binary_classification', 'classification', 'regression']
 
-    Notes
-    -----
+    Notes:
     The predictor can be switched between different task types during training
     using the switch_task method.
     """
     def __init__(self, input_size, output_size, tasktype='binary_classification'):
+        """Initialize `BasicPredictor`."""
         super().__init__()
         self.supported_tasks = ['none', 'binary_classification', 'classification', 'regression']
         logging.debug("Initializing BasicPredictor for task type: %s", tasktype)
@@ -509,13 +484,11 @@ class BasicPredictor(BasicModule):
     def forward(self, x):
         """Forward pass of the predictor.
 
-        Parameters
-        ----------
+        Args:
         x : torch.Tensor
             Input tensor of shape (batch_size, input_size)
 
-        Returns
-        -------
+        Returns:
         torch.Tensor
             Predictions of shape (batch_size, output_size)
         """
@@ -529,8 +502,7 @@ class BasicPredictor(BasicModule):
     def switch_task(self, tasktype):
         """Switch the predictor to a different task type.
 
-        Parameters
-        ----------
+        Args:
         tasktype : str
             New task type to switch to
         """
@@ -554,8 +526,7 @@ class BasicPredictor(BasicModule):
     def current_task(self):
         """Get the current task type.
 
-        Returns
-        -------
+        Returns:
         str
             Current task type
         """
@@ -575,20 +546,19 @@ class BasicLoss(nn.Module):
     - Multi-class classification: CrossEntropyLoss
     - Regression: MSELoss
 
-    Parameters
-    ----------
+    Args:
     tasktype : str, optional
         Type of prediction task (default: 'binary_classification')
     reduction : str, optional
         Reduction method for the loss (default: 'mean')
         Options: ['none', 'mean', 'sum']
 
-    Notes
-    -----
+    Notes:
     The loss function can be switched between different task types during
     training using the switch_task method.
     """
     def __init__(self, tasktype='binary_classification', reduction='mean'):
+        """Initialize `BasicLoss`."""
         super().__init__()
         self.supported_tasks = ['binary_classification', 'classification', 'regression']
         logging.debug("Initializing BasicLoss for task type: %s", tasktype)
@@ -601,15 +571,13 @@ class BasicLoss(nn.Module):
     def forward(self, pred, target):
         """Compute the loss.
 
-        Parameters
-        ----------
+        Args:
         pred : torch.Tensor
             Model predictions
         target : torch.Tensor
             Ground truth targets
 
-        Returns
-        -------
+        Returns:
         torch.Tensor
             Computed loss value
         """
@@ -620,8 +588,7 @@ class BasicLoss(nn.Module):
     def switch_task(self, tasktype):
         """Switch to a different loss function.
 
-        Parameters
-        ----------
+        Args:
         tasktype : str
             New task type to switch to
         """

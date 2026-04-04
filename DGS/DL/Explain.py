@@ -1,28 +1,56 @@
-"""Model interpretation utilities for DGS.
+"""Attribution and motif analysis helpers for trained models.
 
-The module provides:
-- attribution computation (DeepLIFT/SHAP-style scores)
-- motif enrichment workflow (TF-MoDISco-lite CLI integration)
-- seqlet discovery and optional motif annotation
+Purpose:
+    Generate sequence attributions and downstream motif/seqlet summaries.
 
-External dependencies:
-- `tangermeme` Python package (DeepLIFT/SHAP and seqlet utilities)
-- `modisco` CLI command (invoked via subprocess for motif workflows)
+Main Responsibilities:
+    - Compute DeepLIFT/SHAP-style attributions for tensors and datasets.
+    - Export attribution artifacts for TF-MoDISco-lite workflows.
+    - Run optional seqlet calling and motif annotation pipelines.
+
+Key Runtime Notes:
+    - Requires `tangermeme` for attribution and seqlet operations.
+    - Motif enrichment/report generation additionally requires `modisco` CLI.
+    - Batched attribution mode is available through `batch_size` parameters.
 """
-
-from tangermeme.deep_lift_shap import deep_lift_shap
-from tangermeme.seqlet import recursive_seqlets
-from tangermeme.annotate import annotate_seqlets
-from tangermeme.io import read_meme
 
 import os
 import logging
 import subprocess
+import shutil
+from typing import Optional
 
 import torch
 import numpy as np
+from torch.utils.data import DataLoader
+
+try:
+    from tangermeme.deep_lift_shap import deep_lift_shap
+    from tangermeme.seqlet import recursive_seqlets
+    from tangermeme.annotate import annotate_seqlets
+    from tangermeme.io import read_meme
+    _TANGERMEME_IMPORT_ERROR = None
+except ImportError as exc:  # pragma: no cover - exercised in dependency-missing envs
+    deep_lift_shap = None
+    recursive_seqlets = None
+    annotate_seqlets = None
+    read_meme = None
+    _TANGERMEME_IMPORT_ERROR = exc
 
 logger = logging.getLogger("dgs.explain")
+
+
+def _ensure_explain_dependencies(require_modisco: bool = False) -> None:
+    """Raise clear runtime errors for optional explain dependencies."""
+    if _TANGERMEME_IMPORT_ERROR is not None:
+        raise RuntimeError(
+            "Explain mode requires optional dependency 'tangermeme'. "
+            "Install it with `pip install tangermeme`."
+        ) from _TANGERMEME_IMPORT_ERROR
+    if require_modisco and shutil.which("modisco") is None:
+        raise RuntimeError(
+            "Explain mode requires the `modisco` CLI in PATH for motif workflows."
+        )
 
 def calculate_shap(model, X, target, device):
     """
@@ -46,6 +74,8 @@ def calculate_shap(model, X, target, device):
         attributions are returned with the same shape as input.
     """
 
+    _ensure_explain_dependencies()
+
     # Set model to evaluation mode
     model.eval()
     model.to(device)
@@ -56,12 +86,31 @@ def calculate_shap(model, X, target, device):
         X_attr = deep_lift_shap(model, X, target=target)
         X_attr = X_attr.cpu().numpy()
     except Exception as e:
-        print(f"Error calculating SHAP attributions: {e}")
+        logger.error("Error calculating SHAP attributions: %s", e)
         X_attr = np.zeros_like(X.cpu().numpy())
     
     return X_attr
 
-def calculate_shap_on_ds(model, ds, target, device):
+def _to_batch_input(data) -> torch.Tensor:
+    """Convert sample/batch data to (N, 4, L) float tensor."""
+    if isinstance(data, (tuple, list)):
+        data = data[0]
+
+    if isinstance(data, np.ndarray):
+        x = torch.from_numpy(data)
+    elif isinstance(data, torch.Tensor):
+        x = data
+    else:
+        x = torch.tensor(data)
+
+    if x.ndim == 2:
+        x = x.unsqueeze(0)
+    if x.shape[1] != 4:
+        x = x.transpose(1, 2)
+    return x.float()
+
+
+def calculate_shap_on_ds(model, ds, target, device, batch_size: Optional[int] = None):
     """
     Calculate SHAP attributions for an entire dataset.
 
@@ -73,35 +122,31 @@ def calculate_shap_on_ds(model, ds, target, device):
         ds (Dataset): Dataset containing sequences
         target (int): Target task index for multi-task models
         device (str): Computation device ('cuda' or 'cpu')
+        batch_size (int, optional): Batch size for attribution inference.
+            If omitted or <=1, samples are processed one-by-one.
 
     Returns:
         tuple: (sequences, attributions)
             - sequences: Original sequences in one-hot format (N, 4, L)
             - attributions: SHAP values for each sequence (N, 4, L)
     """
+    _ensure_explain_dependencies()
 
     X, X_attr = [], []
-    for i in range(len(ds)):
-        data = ds[i]
-        if len(data) > 1:
-            x = data[0]
-        else:
-            x = data
-
-        # Convert X to (N, 4, L) format if needed
-        if x.ndim == 2:
-            x = x[None, ...]
-
-        if x.shape[1] != 4:
-            x = x.swapaxes(1,-1)
-
-        if isinstance(x, np.ndarray):
-            x = torch.from_numpy(x)
-
-        x_attr = calculate_shap(model, x, target, device)
-        
-        X.append(x.cpu().numpy())
-        X_attr.append(x_attr)
+    if not batch_size or batch_size <= 1:
+        for i in range(len(ds)):
+            x = _to_batch_input(ds[i])
+            x_attr = calculate_shap(model, x, target, device)
+            X.append(x.cpu().numpy())
+            X_attr.append(x_attr)
+    else:
+        logger.info("Using batched SHAP calculation with batch_size=%s", batch_size)
+        dataloader = DataLoader(ds, batch_size=batch_size, shuffle=False)
+        for batch in dataloader:
+            x = _to_batch_input(batch)
+            x_attr = calculate_shap(model, x, target, device)
+            X.append(x.cpu().numpy())
+            X_attr.append(x_attr)
 
     X = np.concatenate(X, axis=0)
     X_attr = np.concatenate(X_attr, axis=0)
@@ -109,7 +154,15 @@ def calculate_shap_on_ds(model, ds, target, device):
     return X, X_attr
 
 
-def motif_enrich(model, ds, target, output_dir="motif_results", max_seqlets=2000, device=torch.device("cpu")):
+def motif_enrich(
+    model,
+    ds,
+    target,
+    output_dir="motif_results",
+    max_seqlets=2000,
+    device=torch.device("cpu"),
+    batch_size: Optional[int] = None,
+):
     """
     Perform comprehensive motif enrichment analysis using model interpretations.
 
@@ -126,6 +179,7 @@ def motif_enrich(model, ds, target, output_dir="motif_results", max_seqlets=2000
         output_dir (str): Directory to save analysis results
         max_seqlets (int): Maximum number of sequence elements to analyze
         device (str): Computation device ('cuda' or 'cpu')
+        batch_size (int, optional): Batch size for SHAP inference.
 
     Returns:
         str: Path to generated motifs file
@@ -146,12 +200,14 @@ def motif_enrich(model, ds, target, output_dir="motif_results", max_seqlets=2000
         - Raw data for further analysis
     """
     
+    _ensure_explain_dependencies(require_modisco=True)
+
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
         
     # Calculate DeepLIFT/SHAP attributions
     logger.info("Calculating DeepLIFT/SHAP attributions...")
-    X, X_attr = calculate_shap_on_ds(model, ds, target=target, device=device)
+    X, X_attr = calculate_shap_on_ds(model, ds, target=target, device=device, batch_size=batch_size)
     
     # Save one-hot encoded sequences and attributions
     logger.info("Saving sequences and attributions...")
@@ -217,6 +273,8 @@ def Seqlet_Calling(model, ds, target, output_dir="seqlet_results", motif_db=None
         genome browsers and downstream analysis tools.
     """
     
+    _ensure_explain_dependencies()
+
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
     
@@ -226,7 +284,7 @@ def Seqlet_Calling(model, ds, target, output_dir="seqlet_results", motif_db=None
     
     # Call seqlets using recursive algorithm
     logger.info("Calling seqlets...")
-    seqlets = recursive_seqlets(X_attr.sum(dim=1))  # Sum across channels for overall importance
+    seqlets = recursive_seqlets(np.sum(X_attr, axis=1))  # Sum across channels for overall importance
     
     # Save seqlets information
     seqlets.to_csv(os.path.join(output_dir, "seqlets.bed"), sep="\t", header=False, index=False)

@@ -3,8 +3,7 @@
 This module provides various embedding methods for transforming one-hot encoded
 DNA sequences into learned vector representations. It includes:
 
-Classes
--------
+Classes:
 BasicConvEmbed
     Basic convolutional embedding that applies 1D convolution to sequences
 
@@ -16,8 +15,7 @@ CharConvModule
     Wide and shallow character-level convolution module with multiple kernel sizes,
     designed for capturing sequence motifs at different scales
 
-Notes
------
+Notes:
 All embedding modules expect input sequences in the form of one-hot encoded tensors
 with shape (batch_size, 4, sequence_length) where 4 represents the nucleotides (A,C,G,T).
 Debug-level logging is available for tracking tensor shapes through the network.
@@ -38,8 +36,7 @@ class BasicConvEmbed(nn.Module):
     Embeds sequences using a convolutional layer with optional batch normalization,
     activation, and pooling.
 
-    Parameters
-    ----------
+    Args:
     out_planes : int
         Number of output channels (embedding dimension)
     kernel_size : int, optional
@@ -60,8 +57,7 @@ class BasicConvEmbed(nn.Module):
     pool_args : dict, optional
         Arguments for pooling layer (default: {'kernel_size': 3})
 
-    Notes
-    -----
+    Notes:
     The module applies operations in the following order:
     1. Convolution
     2. Batch Normalization (optional)
@@ -72,6 +68,7 @@ class BasicConvEmbed(nn.Module):
                     conv_args={'stride':1, 'padding':0, 'dilation':1, 'groups':1}, 
                     bn=False, activation=nn.ReLU, activation_args={}, 
                     pool=nn.AvgPool1d, pool_args={'kernel_size': 3}):
+        """Initialize `BasicConvEmbed`."""
         super().__init__()
         self.out_channels = out_planes
         self.conv = nn.Conv1d(in_planes, out_planes, kernel_size=kernel_size, 
@@ -83,13 +80,11 @@ class BasicConvEmbed(nn.Module):
     def forward(self, x):
         """Forward pass of the embedding module.
 
-        Parameters
-        ----------
+        Args:
         x : torch.Tensor
             Input tensor of shape (batch_size, 4, sequence_length)
 
-        Returns
-        -------
+        Returns:
         torch.Tensor
             Embedded sequence tensor
         """
@@ -122,14 +117,12 @@ class RevComp(nn.Module):
     def forward(self, x):
         """Compute reverse complement.
 
-        Parameters
-        ----------
+        Args:
         x : torch.Tensor
             Input tensor of shape (batch_size, 4, sequence_length) or
             (batch_size, 4, 1, sequence_length)
 
-        Returns
-        -------
+        Returns:
         torch.Tensor
             Reverse complemented sequence tensor
         """
@@ -146,8 +139,7 @@ class RevCompConvEmbed(nn.Module):
     sequences and combines their features. This makes the embedding invariant
     to strand orientation.
 
-    Parameters
-    ----------
+    Args:
     out_planes : int
         Number of output channels (embedding dimension)
     kernel_size : int, optional
@@ -167,8 +159,7 @@ class RevCompConvEmbed(nn.Module):
     pool_args : dict, optional
         Arguments for pooling layer (default: {'kernel_size': 3})
 
-    Notes
-    -----
+    Notes:
     The module:
     1. Computes reverse complement of input
     2. Applies same embedding to both sequences
@@ -178,6 +169,7 @@ class RevCompConvEmbed(nn.Module):
                     conv_args={'stride':1, 'padding':0, 'dilation':1, 'groups':1}, 
                     bn=False, activation=nn.ReLU, activation_args={}, 
                     pool=nn.AvgPool1d, pool_args={'kernel_size': 3}):
+        """Initialize `RevCompConvEmbed`."""
         super().__init__()
         self.RevCompConvEmbed = BasicConvEmbed(out_planes, kernel_size=kernel_size, 
                     in_planes=in_planes, conv_args=conv_args, 
@@ -188,13 +180,11 @@ class RevCompConvEmbed(nn.Module):
     def forward(self, x):
         """Forward pass computing strand-agnostic features.
 
-        Parameters
-        ----------
+        Args:
         x : torch.Tensor
             Input tensor of shape (batch_size, 4, sequence_length)
 
-        Returns
-        -------
+        Returns:
         torch.Tensor
             Combined features from both strands
         """
@@ -218,8 +208,7 @@ class CharConvModule(nn.Module):
     sequence patterns at different scales. Features from all convolutions are
     concatenated to form the final representation.
 
-    Parameters
-    ----------
+    Args:
     numFiltersConv1 : int, optional
         Number of filters for first convolution (default: 40)
     filterLenConv1 : int, optional
@@ -243,8 +232,7 @@ class CharConvModule(nn.Module):
     pool_args : dict, optional
         Arguments for pooling layer (default: {'kernel_size': 3})
 
-    Notes
-    -----
+    Notes:
     The module:
     1. Applies three parallel convolutions with different kernel sizes
     2. Concatenates features from all convolutions
@@ -256,6 +244,7 @@ class CharConvModule(nn.Module):
                         bn=False, activation=nn.ReLU, activation_args={}, 
                         pool=nn.AvgPool1d, pool_args={'kernel_size': 3}):
         
+        """Initialize `CharConvModule`."""
         super().__init__()
         self.conv1 = nn.Conv1d(in_channels=4, out_channels=numFiltersConv1, 
                                 kernel_size=filterLenConv1, 
@@ -275,13 +264,11 @@ class CharConvModule(nn.Module):
     def forward(self, x):
         """Forward pass applying parallel convolutions.
 
-        Parameters
-        ----------
+        Args:
         x : torch.Tensor
             Input tensor of shape (batch_size, 4, sequence_length)
 
-        Returns
-        -------
+        Returns:
         torch.Tensor
             Concatenated features from all convolutions
         """

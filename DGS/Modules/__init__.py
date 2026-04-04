@@ -2,8 +2,7 @@
 
 This package provides fundamental building blocks and modules for deep genomic sequence analysis:
 
-Components
-----------
+Components:
 BasicModule
     Base classes and common modules:
     - BasicModule: Abstract base class with weight initialization and model I/O
@@ -25,8 +24,7 @@ CBAM
     - ChannelGate: Channel attention mechanism
     - SpatialGate: Spatial attention mechanism
 
-Notes
------
+Notes:
 All modules follow a consistent interface and support logging for debugging.
 Modules are designed to work with one-hot encoded DNA sequences of shape
 (batch_size, 4, sequence_length).

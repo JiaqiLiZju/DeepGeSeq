@@ -1,0 +1,37 @@
+# OS files
+.DS_Store
+
+# Python cache/test artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Packaging/build artifacts
+*.egg-info/
+build/
+dist/
+
+# Local outputs
+checkpoints/
+tensorboard/
+docs/
+docs/build/
+
+# Backup/scratch files
+*.bak
+*.bak.*
+*.ipynb.bak.ipynb
+PLAN.md
+
+# Local project references
+Reference/
+DGS_bak/
+
+# Legacy optional modules kept out of mainline
+DGS/*/tests
+DGS/IO/gtf.py
+DGS/IO/meme.py
+DGS/Data/mutdataset.py
+DGS/Data/Augment.py
+DGS/DL/Architecture.py
+DGS/DL/marginlize.py

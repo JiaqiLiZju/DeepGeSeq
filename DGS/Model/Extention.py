@@ -4,8 +4,7 @@ This module provides utilities for dynamically loading and instantiating model m
 and classes from Python files or directories. It supports both single-file models and
 complete Python packages.
 
-Functions
----------
+Functions:
 module_from_file(path)
     Load a module from a single Python file.
 
@@ -15,8 +14,7 @@ module_from_dir(path)
 load_module(import_model_from, model_class_name)
     High-level function to load either a file or directory module.
 
-Notes
------
+Notes:
 The module loading functions are designed to be flexible and support different
 module organization patterns. They can handle:
 - Single file models
@@ -32,24 +30,20 @@ def module_from_file(path):
     This function creates a module object from a Python file without requiring
     the file to be in the Python path. It uses Python's import machinery directly.
 
-    Parameters
-    ----------
+    Args:
     path : str
         Absolute or relative path to the Python file to load.
 
-    Returns
-    -------
+    Returns:
     types.ModuleType
         The loaded module object.
 
-    Examples
-    --------
+    Examples:
     >>> module = module_from_file('path/to/model.py')
     >>> model_class = getattr(module, 'ModelClass')
     >>> model = model_class()
 
-    Notes
-    -----
+    Notes:
     - The file must be a valid Python module
     - The function uses SourceFileLoader from importlib.machinery
     - The module name will be the filename without .py extension
@@ -68,24 +62,20 @@ def module_from_dir(path):
     This function loads a module from a directory containing an __init__.py file.
     The directory must be a valid Python package.
 
-    Parameters
-    ----------
+    Args:
     path : str
         Path to the directory containing the Python module.
 
-    Returns
-    -------
+    Returns:
     module
         The loaded module object.
 
-    Examples
-    --------
+    Examples:
     >>> module = module_from_dir('path/to/model_package')
     >>> model_class = getattr(module, 'ModelClass')
     >>> model = model_class()
 
-    Notes
-    -----
+    Notes:
     - The directory must contain an __init__.py file
     - The __init__.py should import all relevant classes
     - The function temporarily modifies sys.path
@@ -101,23 +91,20 @@ def load_module(import_model_from, model_class_name=None):
     This is a high-level function that can load modules from either files or
     directories. It provides a unified interface for module loading.
 
-    Parameters
-    ----------
+    Args:
     import_model_from : str
         Path to either a Python file or a directory containing a Python package.
     model_class_name : str, optional
         Name of the specific class to load from the module.
         If None, returns only the module.
 
-    Returns
-    -------
+    Returns:
     module : types.ModuleType
         The loaded module object.
     model_class : type, optional
         The model class if model_class_name was specified.
 
-    Examples
-    --------
+    Examples:
     >>> # Load just the module
     >>> module = load_module('path/to/model.py')
     >>> 
@@ -125,8 +112,7 @@ def load_module(import_model_from, model_class_name=None):
     >>> module, model_class = load_module('path/to/model.py', 'ModelClass')
     >>> model = model_class()
 
-    Notes
-    -----
+    Notes:
     - Can handle both file and directory imports
     - Returns either module or (module, class) tuple
     - Raises AttributeError if model_class_name is not found in module

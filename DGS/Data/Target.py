@@ -1,32 +1,17 @@
-"""
-Genomic Target Data Management Module
+"""Target loading and label assembly for genomic intervals.
 
-This module provides a comprehensive framework for handling genomic target data:
+Purpose:
+    Convert BED/BigWig annotations into model-ready labels aligned to intervals.
 
-Key Components:
-1. Target Data Processing:
-   - Support for BED and BigWig formats
-   - Multi-task data management
-   - Flexible data encoding
-   - Efficient storage
+Main Responsibilities:
+    - Load task definitions from BED and BigWig sources.
+    - Align task values to base intervals and maintain per-task metadata.
+    - Expose labels, task statistics, and helper metrics for dataset inspection.
 
-2. Data Analysis Features:
-   - Statistical calculations
-   - Distribution analysis
-   - Quality metrics
-   - Validation tools
-
-3. Integration Capabilities:
-   - Seamless BED/BigWig reading
-   - Interval-based operations
-   - Task configuration management
-   - Format conversion utilities
-
-The module is designed for:
-- Efficient handling of large genomic datasets
-- Support for various genomic data formats
-- Flexible task configuration
-- Robust data validation
+Key Runtime Notes:
+    - BED labels are assigned through overlap mapping using stable `query_index`.
+    - BigWig labels can be aggregated and thresholded before storage.
+    - Multi-task labels are stacked along the last axis in `get_labels(None)`.
 """
 
 import pandas as pd
@@ -188,16 +173,34 @@ class Target:
         labels = np.zeros(len(self._index), dtype=np.int8)
         if len(overlaps) > 0:
             if 'query_index' not in overlaps.columns:
-                overlaps['query_index'] = overlaps.index
-            
-            # Get indices in original order
-            positive_indices = self._index.get_indexer(overlaps['query_index'].unique())
-            
-            # Use target column values if available
+                raise ValueError(
+                    "Overlap results must contain 'query_index'. "
+                    "Please ensure find_overlaps returns stable index fields."
+                )
+
             if target_col in overlaps.columns:
-                labels[positive_indices] = overlaps.groupby('query_index')[target_col].first().values
+                grouped = overlaps.groupby("query_index", sort=False)[target_col].first()
+                query_indices = grouped.index.to_numpy()
+                mapped_positions = self._index.get_indexer(query_indices)
+                valid_mask = mapped_positions >= 0
+                if not np.all(valid_mask):
+                    missing_count = int((~valid_mask).sum())
+                    logger.warning(
+                        "Skipped %s overlap rows because query_index was not found in base intervals",
+                        missing_count,
+                    )
+                labels[mapped_positions[valid_mask]] = grouped.to_numpy()[valid_mask]
             else:
-                labels[positive_indices] = 1
+                query_indices = overlaps["query_index"].unique()
+                mapped_positions = self._index.get_indexer(query_indices)
+                valid_mask = mapped_positions >= 0
+                if not np.all(valid_mask):
+                    missing_count = int((~valid_mask).sum())
+                    logger.warning(
+                        "Skipped %s overlap rows because query_index was not found in base intervals",
+                        missing_count,
+                    )
+                labels[mapped_positions[valid_mask]] = 1
             
         # Store labels and statistics
         self.data[task_name] = labels

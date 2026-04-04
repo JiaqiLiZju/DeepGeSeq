@@ -1,74 +1,30 @@
-"""
-Variant Effect Prediction Module
+"""Variant effect prediction helpers for trained DGS models.
 
-This module provides tools for predicting the functional effects of genetic variants
-using deep learning models. It implements a comprehensive framework for:
-- Processing VCF files and genomic sequences
-- Generating variant-centered sequence windows
-- Computing variant effect scores
-- Batch prediction and analysis
+Purpose:
+    Build variant-centered sequence pairs and compute model-based effect scores.
 
-Key Components:
-1. Data Processing:
-   - VCF file parsing and validation
-   - Sequence extraction and mutation
-   - Variant context generation
-   - Batch processing utilities
+Main Responsibilities:
+    - Parse VCF inputs and construct interval windows around variants.
+    - Generate reference/alternate one-hot pairs through `VariantDataset`.
+    - Run per-variant or batched inference and aggregate effect metrics.
 
-2. Prediction Pipeline:
-   - Model inference setup
-   - Variant effect scoring
-   - Multi-task prediction handling
-   - Result aggregation
-
-3. Output Generation:
-   - Prediction score calculation
-   - Result formatting and export
-   - Statistical analysis
-   - Visualization support
-
-The module is designed to handle various types of genetic variants including:
-- Single nucleotide polymorphisms (SNPs)
-- Insertions and deletions (indels)
-- Multiple nucleotide variants (MNVs)
+Key Runtime Notes:
+    - Batched inference supports optional dataloader worker/pin-memory settings.
+    - Reference/alternate predictions are compared via configurable effect metrics.
+    - Input tensors are normalized to model shape `(batch, channels, length)`.
 """
 
 import torch
 import numpy as np
 import pandas as pd
-from typing import Tuple, List, Union, Optional
-from pathlib import Path
+from typing import Tuple, List, Union, Optional, Dict, Any
+import os
+import logging
+from torch.utils.data import DataLoader
 
-def read_vcf(filename) -> pd.DataFrame:
-    """
-    Parse and validate a VCF file containing genetic variants.
+logger = logging.getLogger("dgs.predict")
 
-    Args:
-        filename (str): Path to the VCF file
-
-    Returns:
-        pd.DataFrame: Parsed variant information with columns:
-            - CHROM: Chromosome name
-            - POS: 1-based variant position
-            - ID: Variant identifier
-            - REF: Reference allele
-            - ALT: Alternative allele
-            - QUAL: Quality score
-            - FILTER: Filter status
-            - INFO: Additional information
-            - FORMAT: Genotype format
-
-    Note:
-        The function handles standard VCF format (v4.0+) and
-        automatically detects column types.
-    """
-    names = ["CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT"]
-    dtypes = {name: str for name in names}
-    dtypes['POS'] = int
-
-    variants = pd.read_csv(filename, delimiter='\t', comment='#', names=names, 
-        dtype=dtypes, usecols=range(9))
-    return variants
+from ..IO.vcf import read_vcf
 
 
 from ..Data.Interval import Interval
@@ -106,50 +62,12 @@ def variants_to_intervals(variants, seq_len=1000) -> Interval:
     intervals = Interval(intervals)
     return intervals
 
-
-# TODO: move this helper into `Data.Sequence.DNASeq` (or related sequence module).
-# Why: variant-edit operations belong with sequence primitives, not prediction IO.
-# Done criteria: `mutate` is imported from the sequence layer and removed here.
-def mutate(seq, var_ref, var_alt):
-    """
-    Apply genetic variants to a reference sequence.
-
-    This function handles different types of variants:
-    - SNPs: Direct base substitution
-    - Deletions: Remove bases and pad with N's
-    - Insertions: Add bases and trim to maintain length
-
-    Args:
-        seq (str): Reference sequence
-        var_ref (str): Reference allele
-        var_alt (str): Alternative allele
-
-    Returns:
-        str: Mutated sequence of the same length as input
-
-    Note:
-        The function maintains sequence length by appropriate
-        padding or trimming based on variant type.
-    """
-    mid = len(seq) // 2
-    target_len = len(seq)
-
-    if len(var_ref) == len(var_alt): # SNP
-        seq = seq[:mid] + var_alt + seq[mid+len(var_ref):]
-
-    elif len(var_ref) > len(var_alt): # deletion
-        pad = 'N' * (len(var_ref) - len(var_alt))
-        seq = seq[:mid] + var_alt + seq[mid+len(var_ref):] + pad
-
-    else: # insertion
-        trim = (len(var_alt) - len(var_ref)) // 2
-        seq = seq[:mid] + var_alt + seq[mid+len(var_ref):]
-        seq = seq[trim:trim+target_len]
-
-    return seq
-
 from ..Data.Dataset import SeqDataset
-from ..Data.Sequence import DNASeq
+from ..Data.Sequence import DNASeq, mutate_sequence
+
+# Backward-compatible alias (historical public symbol in this module).
+mutate = mutate_sequence
+
 class VariantDataset(SeqDataset):
     """
     Dataset class for variant effect prediction.
@@ -202,6 +120,7 @@ class VariantDataset(SeqDataset):
         return seq[start_idx:stop_idx] == ref
 
     def __getitem__(self, idx: int) -> Tuple[np.ndarray, np.ndarray]:
+        """Return one sample for the given flattened index."""
         seq_ref = self.seqs[idx]
         seq_alt = self.seqs[idx]
 
@@ -209,7 +128,7 @@ class VariantDataset(SeqDataset):
         var_alt = self.var_alt[idx]
 
         if self.check_reference(seq_ref.sequence, var_ref):
-            seq_alt = mutate(seq_alt.sequence, var_ref, var_alt)
+            seq_alt = mutate_sequence(seq_alt.sequence, var_ref, var_alt)
             seq_alt = DNASeq(seq_alt)
         else:
             variant = self.variants.iloc[idx]
@@ -257,21 +176,23 @@ def variant_effect_prediction(model, X_ref, X_alt, device=torch.device('cpu')):
     if X_alt.shape[-1] != 4:
         X_alt = X_alt.swapaxes(1,-1)
 
+    device = torch.device(device)
+
     # Set model to evaluation mode
     model.eval()
     model.to(device)
 
     p_ref = None
-    with torch.no_grad():
+    with torch.inference_mode():
         d = torch.from_numpy(X_ref.astype(np.float32)).to(device)
-        e = model.forward(d)#, return_only_embeddings=True)
+        e = model(d)
         p_ref = e.data.cpu().numpy()
     #print(p_ref.shape)
 
     p_alt = None
-    with torch.no_grad():
+    with torch.inference_mode():
         d_alt = torch.from_numpy(X_alt.astype(np.float32)).to(device)
-        e_alt = model.forward(d_alt)#, return_only_embeddings=True)
+        e_alt = model(d_alt)
         p_alt = e_alt.data.cpu().numpy()
     #print(p_alt.shape)
 
@@ -336,9 +257,23 @@ def metric_predicted_effect(p_ref, p_alt, metric_func='diff', mean_by_tasks=True
     return p_eff
 
 
+def _to_model_input(batch: Union[np.ndarray, torch.Tensor], device: torch.device) -> torch.Tensor:
+    """Convert batches to model input shape (N, 4, L) on the target device."""
+    if isinstance(batch, np.ndarray):
+        batch = torch.from_numpy(batch)
+    if batch.ndim == 2:
+        batch = batch.unsqueeze(0)
+    # Keep parity with legacy `variant_effect_prediction` layout handling.
+    if batch.shape[-1] != 4:
+        batch = batch.transpose(1, 2)
+    return batch.to(device, dtype=torch.float32)
+
+
 def vep_centred_on_ds(model, ds,
                 metric_func='diff', mean_by_tasks=True, 
-                device=torch.device('cpu')):
+                device=torch.device('cpu'),
+                batch_size: Optional[int] = None,
+                dataloader_config: Optional[Dict[str, Any]] = None):
     """
     Perform variant effect prediction on a complete dataset.
 
@@ -353,19 +288,60 @@ def vep_centred_on_ds(model, ds,
         metric_func (str or callable): Effect score calculation method
         mean_by_tasks (bool): Whether to average across tasks
         device (str): Computation device ('cuda' or 'cpu')
+        batch_size (int, optional): Batch size for batched inference.
+            If None or <=1, uses the legacy per-variant path.
+        dataloader_config (dict, optional): Optional DataLoader runtime args
+            such as `num_workers` and `pin_memory`.
 
     Returns:
         np.ndarray: Effect scores for all variants
     """
-    P_diff = []
-    for i in range(len(ds)):
-        seq_ref, seq_alt = ds[i]
-        p_ref, p_alt = variant_effect_prediction(model, seq_ref, seq_alt, device=device)
-        p_eff = metric_predicted_effect(p_ref, p_alt, metric_func, mean_by_tasks)
-        P_diff.append(p_eff)
+    device = torch.device(device)
+    model.eval()
+    model.to(device)
 
-    P_diff = np.concatenate(P_diff, axis=0)
-    return P_diff
+    if not batch_size or batch_size <= 1:
+        P_diff = []
+        for i in range(len(ds)):
+            seq_ref, seq_alt = ds[i]
+            p_ref, p_alt = variant_effect_prediction(model, seq_ref, seq_alt, device=device)
+            p_eff = metric_predicted_effect(p_ref, p_alt, metric_func, mean_by_tasks)
+            P_diff.append(p_eff)
+
+        if not P_diff:
+            return np.array([])
+        return np.concatenate(P_diff, axis=0)
+
+    logger.info("Using batched variant effect prediction with batch_size=%s", batch_size)
+    dataloader_kwargs: Dict[str, Any] = {}
+    if dataloader_config:
+        num_workers = int(dataloader_config.get("num_workers", 0))
+        dataloader_kwargs["num_workers"] = num_workers
+        dataloader_kwargs["pin_memory"] = bool(dataloader_config.get("pin_memory", False))
+        if num_workers > 0:
+            if "persistent_workers" in dataloader_config:
+                dataloader_kwargs["persistent_workers"] = bool(dataloader_config["persistent_workers"])
+            if dataloader_config.get("prefetch_factor") is not None:
+                dataloader_kwargs["prefetch_factor"] = int(dataloader_config["prefetch_factor"])
+    dataloader = DataLoader(ds, batch_size=batch_size, shuffle=False, **dataloader_kwargs)
+    batch_scores = []
+    with torch.inference_mode():
+        for seq_ref, seq_alt in dataloader:
+            if isinstance(seq_ref, np.ndarray):
+                seq_ref = torch.from_numpy(seq_ref)
+            if isinstance(seq_alt, np.ndarray):
+                seq_alt = torch.from_numpy(seq_alt)
+            split_idx = seq_ref.shape[0]
+            joint_input = _to_model_input(torch.cat([seq_ref, seq_alt], dim=0), device)
+            joint_output = model(joint_input).detach().cpu().numpy()
+            p_ref = joint_output[:split_idx]
+            p_alt = joint_output[split_idx:]
+            p_eff = metric_predicted_effect(p_ref, p_alt, metric_func, mean_by_tasks)
+            batch_scores.append(p_eff)
+
+    if not batch_scores:
+        return np.array([])
+    return np.concatenate(batch_scores, axis=0)
 
 
 def vep_centred_from_files(model, genome_filename, bcf_filename, 
@@ -402,7 +378,8 @@ def vep_centred_from_files(model, genome_filename, bcf_filename,
         further analysis.
     """
     variant_df = read_vcf(bcf_filename)
-    ds = VariantDataset(genome_filename, variant_df, target_len=target_len)
+    from ..Data.Sequence import Genome
+    ds = VariantDataset(Genome(genome_filename), variant_df, target_len=target_len)
     
     P_diff = vep_centred_on_ds(model, ds, metric_func, mean_by_tasks, device)
 

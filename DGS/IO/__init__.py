@@ -2,8 +2,7 @@
 
 This module provides a unified interface for reading and processing various genomic data formats:
 
-File Formats
------------
+File Formats:
 BED/narrowPeak
     Genomic interval data with optional metadata:
     - Standard BED format (3-12 columns)
@@ -24,8 +23,7 @@ BigWig
     - Multi-track support
     - Flexible binning options
 
-Classes
--------
+Classes:
 FastaReader
     Reader for FASTA sequence files with random access and batch processing
 
@@ -35,8 +33,7 @@ BedReader
 BigWigReader
     Reader for BigWig signal files with aggregation capabilities
 
-Notes
------
+Notes:
 All readers follow a consistent interface pattern:
 1. File validation on initialization
 2. Standardized interval data format

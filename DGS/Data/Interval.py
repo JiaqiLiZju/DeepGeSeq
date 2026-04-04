@@ -1,38 +1,17 @@
-"""
-Genomic Interval Processing Module
+"""Interval operations and interval container classes.
 
-This module provides comprehensive tools for manipulating genomic intervals and coordinates:
+Purpose:
+    Provide overlap, distance, merge, and statistics utilities for genomic ranges.
 
-Key Components:
-1. Core Interval Operations:
-   - Overlap detection and merging
-   - Distance calculations
-   - Coordinate validation
-   - Statistical analysis
+Main Responsibilities:
+    - Compute overlaps and nearest intervals between interval sets.
+    - Merge interval ranges and summarize interval-level statistics.
+    - Expose `Interval` and `NamedInterval` classes for pipeline integration.
 
-2. Interval Classes:
-   - Interval: Basic genomic interval management
-   - NamedInterval: Intervals with unique identifiers
-   - Efficient coordinate operations
-   - Format conversion utilities
-
-3. Analysis Tools:
-   - Overlap statistics
-   - Distance metrics
-   - Distribution analysis
-   - Quality assessment
-
-4. Integration Features:
-   - BED file support
-   - DataFrame compatibility
-   - Batch processing
-   - Memory optimization
-
-The module is designed for:
-- High-performance interval operations
-- Memory-efficient data structures
-- Flexible coordinate handling
-- Integration with genomic pipelines
+Key Runtime Notes:
+    - Overlap outputs include stable `query_index` and `target_index` fields.
+    - Interval coordinates follow half-open semantics (`start` inclusive, `end` exclusive).
+    - BED readers are used when interval objects are created from file paths.
 """
 
 import pandas as pd
@@ -73,6 +52,8 @@ def find_overlaps(
             - overlap_start: Start of overlap region
             - overlap_end: End of overlap region
             - overlap_length: Length of overlap
+            - query_index: Original index from `query_intervals`
+            - target_index: Original index from `target_intervals`
             - query_* columns: Original query interval data
             
     Example:
@@ -89,56 +70,83 @@ def find_overlaps(
         >>> overlaps = find_overlaps(query, target)
     """
     results = []
-    
-    # Process each chromosome
-    for chrom in query_intervals[chrom_col].unique():
-        # Get intervals for current chromosome
+    core_cols = {chrom_col, start_col, end_col}
+    query_extra_cols = [col for col in query_intervals.columns if col not in core_cols]
+
+    # Iterate only over chromosomes present in both sets.
+    common_chroms = np.intersect1d(
+        query_intervals[chrom_col].unique(),
+        target_intervals[chrom_col].unique(),
+    )
+
+    for chrom in common_chroms:
         query_chrom = query_intervals[query_intervals[chrom_col] == chrom]
         target_chrom = target_intervals[target_intervals[chrom_col] == chrom]
-        
-        if len(query_chrom) == 0 or len(target_chrom) == 0:
+        if query_chrom.empty or target_chrom.empty:
             continue
-            
-        # Calculate overlaps
-        for _, interval in query_chrom.iterrows():
-            overlaps = (
-                (target_chrom[start_col] < interval[end_col]) &
-                (target_chrom[end_col] > interval[start_col])
+
+        # Sort by start once, then scan with monotonic pointers.
+        query_sorted = query_chrom.sort_values(start_col, kind="mergesort")
+        target_sorted = target_chrom.sort_values(start_col, kind="mergesort")
+
+        q_starts = query_sorted[start_col].to_numpy()
+        q_ends = query_sorted[end_col].to_numpy()
+        q_indices = query_sorted.index.to_numpy()
+
+        t_starts = target_sorted[start_col].to_numpy()
+        t_ends = target_sorted[end_col].to_numpy()
+        n_target = len(target_sorted)
+        left_ptr = 0
+        chrom_target_positions = []
+        chrom_query_indices = []
+        chrom_overlap_starts = []
+        chrom_overlap_ends = []
+        chrom_query_payload = {f"query_{col}": [] for col in query_extra_cols}
+
+        for q_pos, (q_start, q_end, q_index) in enumerate(zip(q_starts, q_ends, q_indices)):
+            while left_ptr < n_target and t_ends[left_ptr] <= q_start:
+                left_ptr += 1
+            if left_ptr >= n_target:
+                break
+
+            right_ptr = np.searchsorted(t_starts, q_end, side="left")
+            if right_ptr <= left_ptr:
+                continue
+
+            active_mask = t_ends[left_ptr:right_ptr] > q_start
+            if not np.any(active_mask):
+                continue
+
+            active_positions = np.nonzero(active_mask)[0] + left_ptr
+            chrom_target_positions.extend(active_positions.tolist())
+            chrom_query_indices.extend([q_index] * len(active_positions))
+
+            overlap_start = np.maximum(q_start, t_starts[active_positions])
+            overlap_end = np.minimum(q_end, t_ends[active_positions])
+            chrom_overlap_starts.extend(overlap_start.tolist())
+            chrom_overlap_ends.extend(overlap_end.tolist())
+
+            if query_extra_cols:
+                query_row = query_sorted.iloc[q_pos]
+                for col in query_extra_cols:
+                    chrom_query_payload[f"query_{col}"].extend([query_row[col]] * len(active_positions))
+
+        if chrom_target_positions:
+            overlap_regions = target_sorted.iloc[chrom_target_positions].copy()
+            overlap_regions["overlap_start"] = np.asarray(chrom_overlap_starts)
+            overlap_regions["overlap_end"] = np.asarray(chrom_overlap_ends)
+            overlap_regions["overlap_length"] = (
+                overlap_regions["overlap_end"].to_numpy() - overlap_regions["overlap_start"].to_numpy()
             )
-            
-            if overlaps.any():
-                overlap_regions = target_chrom[overlaps].copy()
-                
-                # Calculate overlap lengths
-                overlap_lengths = np.minimum(
-                    interval[end_col],
-                    overlap_regions[end_col]
-                ) - np.maximum(
-                    interval[start_col],
-                    overlap_regions[start_col]
-                )
-                
-                # Add overlap information
-                overlap_regions['overlap_start'] = np.maximum(
-                    interval[start_col],
-                    overlap_regions[start_col]
-                )
-                overlap_regions['overlap_end'] = np.minimum(
-                    interval[end_col],
-                    overlap_regions[end_col]
-                )
-                overlap_regions['overlap_length'] = overlap_lengths
-                
-                # Add query interval information
-                for col in interval.index:
-                    if col not in [chrom_col, start_col, end_col]:
-                        overlap_regions[f"query_{col}"] = interval[col]
-                        
-                results.append(overlap_regions)
-                
+            overlap_regions["query_index"] = np.asarray(chrom_query_indices)
+            overlap_regions["target_index"] = overlap_regions.index.to_numpy()
+            for col_name, values in chrom_query_payload.items():
+                overlap_regions[col_name] = values
+            results.append(overlap_regions)
+
     if not results:
         return pd.DataFrame()
-        
+
     return pd.concat(results, ignore_index=True)
 
 def merge_intervals(
@@ -539,6 +547,17 @@ class Interval:
         # Filter by minimum overlap if specified
         if min_overlap is not None:
             overlaps = overlaps[overlaps['overlap_length'] >= min_overlap]
+
+        if overlaps.empty:
+            if how == 'inner':
+                return overlaps
+            if how == 'left':
+                return self.data.copy()
+            if how == 'right':
+                return other_df.copy()
+            if how == 'outer':
+                return pd.concat([self.data.copy(), other_df.copy()], ignore_index=True, sort=False)
+            raise ValueError(f"Invalid merge type: {how}")
             
         # Handle merge type
         if how == 'inner':
@@ -548,22 +567,22 @@ class Interval:
             used_indices = set(overlaps['query_index'].unique())
             remaining = self.data.loc[~self.data.index.isin(used_indices)]
             if len(remaining) > 0:
-                return pd.concat([overlaps, remaining], ignore_index=True)
+                return pd.concat([overlaps, remaining], ignore_index=True, sort=False)
             return overlaps
         elif how == 'right':
             # Add non-overlapping intervals from other
-            used_indices = set(overlaps.index)
+            used_indices = set(overlaps['target_index'].unique())
             remaining = other_df.loc[~other_df.index.isin(used_indices)]
             if len(remaining) > 0:
-                return pd.concat([overlaps, remaining], ignore_index=True)
+                return pd.concat([overlaps, remaining], ignore_index=True, sort=False)
             return overlaps
         elif how == 'outer':
             # Add non-overlapping intervals from both
             used_self = set(overlaps['query_index'].unique())
-            used_other = set(overlaps.index)
+            used_other = set(overlaps['target_index'].unique())
             remaining_self = self.data.loc[~self.data.index.isin(used_self)]
             remaining_other = other_df.loc[~other_df.index.isin(used_other)]
-            return pd.concat([overlaps, remaining_self, remaining_other], ignore_index=True)
+            return pd.concat([overlaps, remaining_self, remaining_other], ignore_index=True, sort=False)
         else:
             raise ValueError(f"Invalid merge type: {how}")
             
